@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">Annulus</string>
-    <string name="my_analog_name">My Analog</string>
+    <string name="watchface_name">Annulus</string>
 </resources>

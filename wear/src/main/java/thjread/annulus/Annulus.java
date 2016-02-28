@@ -31,7 +31,10 @@ import android.os.Message;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
 import android.text.format.Time;
+import android.util.Log;
+import android.util.TypedValue;
 import android.view.SurfaceHolder;
+import android.view.WindowInsets;
 
 import java.lang.ref.WeakReference;
 import java.util.TimeZone;
@@ -100,6 +103,30 @@ public class Annulus extends CanvasWatchFaceService {
          */
         boolean mLowBitAmbient;
 
+        Resources mRes;
+
+        static final int grid_size = 8;
+        static final float hour_length = 4.f;
+        static final float minute_length = 6.f;
+        static final float second_length = 7.f;
+
+        static final float major_tic_start = 6f;
+        static final float major_tic_end = 7.5f;
+        static final float minor_tic_start = 7.f;
+        static final float minor_tic_end = 7.5f;
+
+        static final float circle_size = 0.3f;
+
+        boolean mIsRound;
+        int mChinSize;
+
+        @Override
+        public void onApplyWindowInsets(WindowInsets insets) {
+            super.onApplyWindowInsets(insets);
+            mIsRound = insets.isRound();
+            mChinSize = insets.getSystemWindowInsetBottom();
+        }
+
         @Override
         public void onCreate(SurfaceHolder holder) {
             super.onCreate(holder);
@@ -111,14 +138,13 @@ public class Annulus extends CanvasWatchFaceService {
                     .setAcceptsTapEvents(true)
                     .build());
 
-            Resources resources = Annulus.this.getResources();
+            mRes = Annulus.this.getResources();
 
             mBackgroundPaint = new Paint();
-            mBackgroundPaint.setColor(resources.getColor(R.color.background));
+            mBackgroundPaint.setColor(mRes.getColor(R.color.background));
 
             mHandPaint = new Paint();
-            mHandPaint.setColor(resources.getColor(R.color.analog_hands));
-            mHandPaint.setStrokeWidth(resources.getDimension(R.dimen.analog_hand_stroke));
+            mHandPaint.setColor(mRes.getColor(R.color.analog_hands));
             mHandPaint.setAntiAlias(true);
             mHandPaint.setStrokeCap(Paint.Cap.ROUND);
 
@@ -165,7 +191,6 @@ public class Annulus extends CanvasWatchFaceService {
          */
         @Override
         public void onTapCommand(int tapType, int x, int y, long eventTime) {
-            Resources resources = Annulus.this.getResources();
             switch (tapType) {
                 case TAP_TYPE_TOUCH:
                     // The user has started touching the screen.
@@ -176,7 +201,7 @@ public class Annulus extends CanvasWatchFaceService {
                 case TAP_TYPE_TAP:
                     // The user has completed the tap gesture.
                     mTapCount++;
-                    mBackgroundPaint.setColor(resources.getColor(mTapCount % 2 == 0 ?
+                    mBackgroundPaint.setColor(mRes.getColor(mTapCount % 2 == 0 ?
                             R.color.background : R.color.background2));
                     break;
             }
@@ -197,31 +222,84 @@ public class Annulus extends CanvasWatchFaceService {
             // Find the center. Ignore the window insets so that, on round watches with a
             // "chin", the watch face is centered on the entire screen, not just the usable
             // portion.
-            float centerX = bounds.width() / 2f;
-            float centerY = bounds.height() / 2f;
+            float centreX = bounds.width() / 2f;
+            float centreY = bounds.height() / 2f;
+            float grid = centreX / grid_size;
 
-            float secRot = mTime.second / 30f * (float) Math.PI;
+            int seconds = mTime.second;
+            float secRot = (seconds / 30f) * (float) Math.PI;
             int minutes = mTime.minute;
-            float minRot = minutes / 30f * (float) Math.PI;
-            float hrRot = ((mTime.hour + (minutes / 60f)) / 6f) * (float) Math.PI;
+            float minRot;
+            if (!mAmbient) {
+                minRot = ((minutes + (seconds / 60f)) / 30f) * (float) Math.PI;
+            } else {
+                minRot = (minutes / 30f) * (float) Math.PI;
+            }
+            int hours = mTime.hour;
+            float hrRot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
 
-            float secLength = centerX - 20;
-            float minLength = centerX - 40;
-            float hrLength = centerX - 80;
+            float secLength = second_length * grid;
+            float minLength = minute_length * grid;
+            float hrLength = hour_length * grid;
+
+            mHandPaint.setStyle(Paint.Style.STROKE);
 
             if (!mAmbient) {
                 float secX = (float) Math.sin(secRot) * secLength;
                 float secY = (float) -Math.cos(secRot) * secLength;
-                canvas.drawLine(centerX, centerY, centerX + secX, centerY + secY, mHandPaint);
+                mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.second_thickenss));
+                canvas.drawLine(centreX, centreY, centreX + secX, centreY + secY, mHandPaint);
             }
 
             float minX = (float) Math.sin(minRot) * minLength;
             float minY = (float) -Math.cos(minRot) * minLength;
-            canvas.drawLine(centerX, centerY, centerX + minX, centerY + minY, mHandPaint);
+            mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.minute_thickenss));
+            canvas.drawLine(centreX, centreY, centreX + minX, centreY + minY, mHandPaint);
 
             float hrX = (float) Math.sin(hrRot) * hrLength;
             float hrY = (float) -Math.cos(hrRot) * hrLength;
-            canvas.drawLine(centerX, centerY, centerX + hrX, centerY + hrY, mHandPaint);
+            mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.hour_thickenss));
+            canvas.drawLine(centreX, centreY, centreX + hrX, centreY + hrY, mHandPaint);
+
+            mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.major_tic_thickenss));
+            for (int i=0; i<12; ++i) {
+                double ticRot = i/6.f * Math.PI;
+                float ticX = (float) Math.sin(ticRot) * major_tic_start * grid;
+                float ticY = (float) -Math.cos(ticRot) * major_tic_start * grid;
+                float ticXEnd = (float) Math.sin(ticRot) * major_tic_end * grid;
+                float ticYEnd = (float) -Math.cos(ticRot) * major_tic_end * grid;
+                if (ticYEnd+centreY > bounds.height()-mChinSize) {
+                    ticY -= (ticYEnd+centreY - (bounds.height()-mChinSize))/2;
+                    ticYEnd = bounds.height()-mChinSize-centreY;
+                }
+                canvas.drawLine(centreX + ticX, centreY + ticY, centreX + ticXEnd, centreY + ticYEnd, mHandPaint);
+            }
+
+            mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.minor_tic_thickenss));
+            for (int i=0; i<60; ++i) {
+                if (i%5 == 0) {
+                    continue;
+                }
+                double ticRot = i/30.f * Math.PI;
+                float ticX = (float) Math.sin(ticRot) * minor_tic_start * grid;
+                float ticY = (float) -Math.cos(ticRot) * minor_tic_start * grid;
+                float ticXEnd = (float) Math.sin(ticRot) * minor_tic_end * grid;
+                float ticYEnd = (float) -Math.cos(ticRot) * minor_tic_end * grid;
+                if (ticYEnd+centreY > bounds.height()-mChinSize) {
+                    float height = ticYEnd - ticY;
+                    ticYEnd = bounds.height()-mChinSize-centreY;
+                    ticY = ticYEnd - height*0.8f;
+                }
+                canvas.drawLine(centreX + ticX, centreY + ticY, centreX + ticXEnd, centreY + ticYEnd, mHandPaint);
+            }
+
+            mHandPaint.setStyle(Paint.Style.FILL);
+            canvas.drawCircle(centreX, centreY, grid*circle_size, mHandPaint);
+
+            /*mHandPaint.setStyle(Paint.Style.STROKE);
+            for (int i=0; i<grid; ++i) {
+                canvas.drawCircle(centreX, centreY, grid * i, mHandPaint);
+            }*/
         }
 
         @Override
