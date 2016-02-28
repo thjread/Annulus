@@ -1,0 +1,5 @@
+<resources>
+    <string-array name="android_wear_capabilities">
+        <item>annulus_weather_data</item>
+    </string-array>
+</resources>

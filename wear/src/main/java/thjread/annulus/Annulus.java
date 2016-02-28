@@ -28,15 +28,36 @@ import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.support.annotation.NonNull;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
+import android.text.format.DateUtils;
 import android.text.format.Time;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.SurfaceHolder;
 import android.view.WindowInsets;
 
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.wearable.CapabilityApi;
+import com.google.android.gms.wearable.CapabilityInfo;
+import com.google.android.gms.wearable.MessageApi;
+import com.google.android.gms.wearable.MessageEvent;
+import com.google.android.gms.wearable.Node;
+import com.google.android.gms.wearable.Wearable;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectInputStream;
 import java.lang.ref.WeakReference;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.List;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
@@ -81,27 +102,26 @@ public class Annulus extends CanvasWatchFaceService {
         }
     }
 
-    private class Engine extends CanvasWatchFaceService.Engine {
+    private class Engine extends CanvasWatchFaceService.Engine implements GoogleApiClient.ConnectionCallbacks,
+            GoogleApiClient.OnConnectionFailedListener, MessageApi.MessageListener {
+        public final String TAG = "thjread.annulus";
+
         final Handler mUpdateTimeHandler = new EngineHandler(this);
         boolean mRegisteredTimeZoneReceiver = false;
         Paint mBackgroundPaint;
         Paint mHandPaint;
         boolean mAmbient;
-        Time mTime;
+        Calendar mCalendar;
         final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                mTime.clear(intent.getStringExtra("time-zone"));
-                mTime.setToNow();
+                mCalendar.setTimeZone(TimeZone.getDefault());
+                invalidate();
             }
         };
-        int mTapCount;
 
-        /**
-         * Whether the display supports fewer bits for each color in ambient mode. When true, we
-         * disable anti-aliasing in ambient mode.
-         */
         boolean mLowBitAmbient;
+        boolean mBurnInProtection;
 
         Resources mRes;
 
@@ -120,6 +140,9 @@ public class Annulus extends CanvasWatchFaceService {
         boolean mIsRound;
         int mChinSize;
 
+        boolean mApiConnected = false;
+        GoogleApiClient mGoogleApiClient;
+
         @Override
         public void onApplyWindowInsets(WindowInsets insets) {
             super.onApplyWindowInsets(insets);
@@ -133,6 +156,7 @@ public class Annulus extends CanvasWatchFaceService {
 
             setWatchFaceStyle(new WatchFaceStyle.Builder(Annulus.this)
                     .setCardPeekMode(WatchFaceStyle.PEEK_MODE_SHORT)
+                    .setAmbientPeekMode(WatchFaceStyle.AMBIENT_PEEK_MODE_HIDDEN)
                     .setBackgroundVisibility(WatchFaceStyle.BACKGROUND_VISIBILITY_INTERRUPTIVE)
                     .setShowSystemUiTime(false)
                     .setAcceptsTapEvents(true)
@@ -148,7 +172,13 @@ public class Annulus extends CanvasWatchFaceService {
             mHandPaint.setAntiAlias(true);
             mHandPaint.setStrokeCap(Paint.Cap.ROUND);
 
-            mTime = new Time();
+            mCalendar = Calendar.getInstance();
+
+            mGoogleApiClient = new GoogleApiClient.Builder(Annulus.this)
+                    .addConnectionCallbacks(this)
+                    .addOnConnectionFailedListener(this)
+                    .addApi(Wearable.API)
+                    .build();
         }
 
         @Override
@@ -161,11 +191,13 @@ public class Annulus extends CanvasWatchFaceService {
         public void onPropertiesChanged(Bundle properties) {
             super.onPropertiesChanged(properties);
             mLowBitAmbient = properties.getBoolean(PROPERTY_LOW_BIT_AMBIENT, false);
+            mBurnInProtection = properties.getBoolean(PROPERTY_BURN_IN_PROTECTION, false);
         }
 
         @Override
         public void onTimeTick() {
             super.onTimeTick();
+            checkBackgroundUpdate();
             invalidate();
         }
 
@@ -174,9 +206,9 @@ public class Annulus extends CanvasWatchFaceService {
             super.onAmbientModeChanged(inAmbientMode);
             if (mAmbient != inAmbientMode) {
                 mAmbient = inAmbientMode;
-                if (mLowBitAmbient) {
+                /*if (mLowBitAmbient) {
                     mHandPaint.setAntiAlias(!inAmbientMode);
-                }
+                }*///TODO
                 invalidate();
             }
 
@@ -200,9 +232,8 @@ public class Annulus extends CanvasWatchFaceService {
                     break;
                 case TAP_TYPE_TAP:
                     // The user has completed the tap gesture.
-                    mTapCount++;
-                    mBackgroundPaint.setColor(mRes.getColor(mTapCount % 2 == 0 ?
-                            R.color.background : R.color.background2));
+                    //mBackgroundPaint.setColor(mRes.getColor(mTapCount % 2 == 0 ?
+                            //R.color.background : R.color.background2));
                     break;
             }
             invalidate();
@@ -210,7 +241,7 @@ public class Annulus extends CanvasWatchFaceService {
 
         @Override
         public void onDraw(Canvas canvas, Rect bounds) {
-            mTime.setToNow();
+            mCalendar.setTimeInMillis(System.currentTimeMillis());
 
             // Draw the background.
             if (isInAmbientMode()) {
@@ -226,16 +257,16 @@ public class Annulus extends CanvasWatchFaceService {
             float centreY = bounds.height() / 2f;
             float grid = centreX / grid_size;
 
-            int seconds = mTime.second;
+            int seconds = mCalendar.get(Calendar.SECOND);
             float secRot = (seconds / 30f) * (float) Math.PI;
-            int minutes = mTime.minute;
+            int minutes = mCalendar.get(Calendar.MINUTE);
             float minRot;
             if (!mAmbient) {
                 minRot = ((minutes + (seconds / 60f)) / 30f) * (float) Math.PI;
             } else {
                 minRot = (minutes / 30f) * (float) Math.PI;
             }
-            int hours = mTime.hour;
+            int hours = mCalendar.get(Calendar.HOUR);
             float hrRot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
 
             float secLength = second_length * grid;
@@ -300,6 +331,59 @@ public class Annulus extends CanvasWatchFaceService {
             for (int i=0; i<grid; ++i) {
                 canvas.drawCircle(centreX, centreY, grid * i, mHandPaint);
             }*/
+
+            class TempPoint {
+                public float temperature;
+                public float rot;
+            }
+
+            if (weatherData != null && weatherData.hourly != null) {//TODO move to update function
+                List<TempPoint> temperatures = new ArrayList<>();
+
+                Float minTemp = null; Float maxTemp = null;
+
+                for (WeatherService.Datum d : weatherData.hourly.data) {
+                    long time = d.time;
+                    time *= 1000;
+                    mCalendar.setTimeInMillis(time);
+                    minutes = mCalendar.get(Calendar.MINUTE);
+                    hours = mCalendar.get(Calendar.HOUR);
+
+                    float dataRot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
+
+                    if (d.temperature == null) {
+                        continue;
+                    }
+                    if (mCalendar.getTimeInMillis() - System.currentTimeMillis() > DateUtils.HOUR_IN_MILLIS * 11.1) {
+                        break;
+                    }
+
+                    TempPoint p = new TempPoint();
+                    double t = d.temperature;
+                    p.temperature = (float) t;
+                    p.rot = dataRot;
+
+                    temperatures.add(p);
+
+                    if (minTemp == null || p.temperature < minTemp) {
+                        minTemp = p.temperature;
+                    }
+                    if (maxTemp == null || p.temperature > maxTemp) {
+                        maxTemp = p.temperature;
+                    }
+                }
+
+                for (TempPoint p: temperatures) {
+                    float dataLen = p.temperature;
+                    dataLen -= minTemp;
+                    dataLen *= grid*5/(maxTemp-minTemp);
+                    dataLen += grid*1;
+
+                    float dataX = (float) Math.sin(p.rot) * dataLen;
+                    float dataY = (float) -Math.cos(p.rot) * dataLen;
+                    canvas.drawCircle(centreX + dataX, centreY + dataY, 2.0f, mHandPaint);
+                }
+            }
         }
 
         @Override
@@ -310,9 +394,14 @@ public class Annulus extends CanvasWatchFaceService {
                 registerReceiver();
 
                 // Update time zone in case it changed while we weren't visible.
-                mTime.clear(TimeZone.getDefault().getID());
-                mTime.setToNow();
+                mCalendar.setTimeZone(TimeZone.getDefault());
+                mGoogleApiClient.connect();
+                invalidate();
             } else {
+                if (mGoogleApiClient.isConnected()) {
+                    Wearable.MessageApi.removeListener(mGoogleApiClient, this);
+                    mGoogleApiClient.disconnect();
+                }
                 unregisterReceiver();
             }
 
@@ -367,7 +456,196 @@ public class Annulus extends CanvasWatchFaceService {
                 long delayMs = INTERACTIVE_UPDATE_RATE_MS
                         - (timeMs % INTERACTIVE_UPDATE_RATE_MS);
                 mUpdateTimeHandler.sendEmptyMessageDelayed(MSG_UPDATE_TIME, delayMs);
+                checkBackgroundUpdate();
             }
         }
+
+        private long lastBackgroundUpdate = 0;
+
+        private void checkBackgroundUpdate() {
+            mCalendar.setTimeInMillis(System.currentTimeMillis());
+
+            if (mCalendar.getTimeInMillis()-lastBackgroundUpdate > DateUtils.MINUTE_IN_MILLIS*3
+                    && mCalendar.get(Calendar.MINUTE)%5 <= 1) {
+                backgroundUpdate();
+            }
+        }
+
+        private void backgroundUpdate() {
+            lastBackgroundUpdate = System.currentTimeMillis();
+
+            byte[] data = {};
+
+            Log.d(TAG, "Background update");
+
+            if (mWeatherNodeId != null && mApiConnected && !mAmbient) {
+                Wearable.MessageApi.sendMessage(mGoogleApiClient, mWeatherNodeId,
+                        WEATHER_PATH, data).setResultCallback(
+                        new ResultCallback<MessageApi.SendMessageResult>() {
+                            @Override
+                            public void onResult(@NonNull MessageApi.SendMessageResult result) {
+                            }
+                        }
+                );
+            }
+        }
+
+        private static final String WEATHER_CAPABILITY_NAME = "annulus_weather_data";
+        private static final String WEATHER_PATH = "/annulus_weather_data";
+
+        @Override
+        public void onConnected(Bundle connectionHint) {
+            mApiConnected = true;
+            Wearable.MessageApi.addListener(mGoogleApiClient, this);
+
+            Wearable.CapabilityApi.getCapability(mGoogleApiClient, WEATHER_CAPABILITY_NAME,
+                    CapabilityApi.FILTER_REACHABLE).setResultCallback(
+                    new ResultCallback<CapabilityApi.GetCapabilityResult>() {
+                        @Override
+                        public void onResult(@NonNull CapabilityApi.GetCapabilityResult getCapabilityResult) {
+                            updateWeatherCapability(getCapabilityResult.getCapability());
+                        }
+                    }
+            );
+
+            CapabilityApi.CapabilityListener capabilityListener =
+                    new CapabilityApi.CapabilityListener() {
+                        @Override
+                        public void onCapabilityChanged(CapabilityInfo capabilityInfo) {
+                            updateWeatherCapability(capabilityInfo);
+                        }
+                    };
+            Wearable.CapabilityApi.addCapabilityListener(
+                    mGoogleApiClient,
+                    capabilityListener,
+                    WEATHER_CAPABILITY_NAME);
+        }
+
+        private String mWeatherNodeId = null;
+
+        private void updateWeatherCapability(CapabilityInfo capabilityInfo) {
+            Set<Node> connectedNodes = capabilityInfo.getNodes();
+            mWeatherNodeId = pickBestNodeId(connectedNodes);
+            backgroundUpdate();
+        }
+
+        private String pickBestNodeId(Set<Node> nodes) {
+            String bestNodeId = null;
+            // Find a nearby node or pick one arbitrarily
+            for (Node node : nodes) {
+                if (node.isNearby()) {
+                    return node.getId();
+                }
+                bestNodeId = node.getId();
+            }
+            return bestNodeId;
+        }
+
+        private Object convertFromBytes(byte[] bytes) throws IOException, ClassNotFoundException {
+            try (ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
+                 ObjectInput in = new ObjectInputStream(bis)) {
+                return in.readObject();
+            }
+        }
+
+        WeatherService.WeatherData weatherData = null;
+
+        @Override
+        public void onMessageReceived(MessageEvent messageEvent) {
+            byte[] d = messageEvent.getData();
+            WeatherService.WeatherData data = null;
+            try {
+                data = (WeatherService.WeatherData) convertFromBytes(d);
+            } catch (IOException e) {
+                Log.e(TAG, "Weather data conversion from bytes failed");
+            } catch (ClassNotFoundException e) {
+
+            }
+
+            if (data != null) {
+                Log.d(TAG, "Weather data received");
+                weatherData = data;
+            }
+        }
+
+        public void onConnectionSuspended(int cause) {
+            mApiConnected = false;
+        }
+
+        public void onConnectionFailed(@NonNull ConnectionResult cause) {
+            mApiConnected = false;
+        }
+
+        /*private class WeatherDatapoint {
+            Integer time;
+            Double temperature;
+            Double cloudCover;
+            Double precipProbability;
+            Double precipIntensity;
+        }
+
+        List<WeatherDatapoint> weatherData = null;
+
+        private void processWeatherData(WeatherService.WeatherData data) {
+            rawData = data;
+            weatherData = new ArrayList<>();
+
+            if (data.hourly != null && data.hourly.data != null) {
+                for (int i=data.hourly.data.size()-1; i>=0; --i) {
+                    if (!weatherData.isEmpty()) {
+                        weatherData.add(toDatapoint(data.hourly.data.get(i), weatherData.get(weatherData.size() - 1)));
+                    } else {
+                        weatherData.add(toDatapoint(data.hourly.data.get(i), null));
+                    }
+                }
+            }
+
+            if (data.minutely != null && data.minutely.data != null) {
+                for (int i=data.minutely.data.size()-1; i>=0; --i) {
+                    if (!weatherData.isEmpty()) {
+                        weatherData.add(toDatapoint(data.minutely.data.get(i), weatherData.get(weatherData.size() - 1)));
+                    } else {
+                        weatherData.add(toDatapoint(data.minutely.data.get(i), null));
+                    }
+                }
+            }
+
+            if (data.currently != null) {
+                if (!weatherData.isEmpty()) {
+                    weatherData.add(toDatapoint(data.currently, weatherData.get(weatherData.size() - 1)));
+                } else {
+                    weatherData.add(toDatapoint(data.currently, null));
+                }
+            }
+        }
+
+        private WeatherDatapoint toDatapoint(WeatherService.Datum datum, WeatherDatapoint backup) {
+            WeatherDatapoint datapoint = new WeatherDatapoint();
+
+            datapoint.time = datum.time;
+
+            if (datum.temperature != null) {
+                datapoint.temperature = datum.temperature;
+            } else if (backup != null) {
+                datapoint.temperature = backup.temperature;
+            }
+            if (datum.cloudCover != null) {
+                datapoint.cloudCover = datum.cloudCover;
+            } else if (backup != null) {
+                datapoint.cloudCover = backup.cloudCover;
+            }
+            if (datum.precipIntensity != null) {
+                datapoint.precipIntensity = datum.precipIntensity;
+            } else if (backup != null) {
+                datapoint.precipIntensity = backup.precipIntensity;
+            }
+            if (datum.precipProbability != null) {
+                datapoint.precipProbability = datum.precipProbability;
+            } else if (backup != null) {
+                datapoint.precipProbability = backup.precipProbability;
+            }
+
+            return datapoint;
+        }*/
     }
 }
