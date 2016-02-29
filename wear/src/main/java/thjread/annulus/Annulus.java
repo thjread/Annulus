@@ -34,6 +34,7 @@ import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
 import android.text.format.DateUtils;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.SurfaceHolder;
 import android.view.WindowInsets;
 
@@ -259,6 +260,8 @@ public class Annulus extends CanvasWatchFaceService {
                 canvas.drawRect(0, 0, canvas.getWidth(), canvas.getHeight(), mBackgroundPaint);
             }
 
+            long currentTime = System.currentTimeMillis();
+
             // Find the center. Ignore the window insets so that, on round watches with a
             // "chin", the watch face is centered on the entire screen, not just the usable
             // portion.
@@ -277,12 +280,20 @@ public class Annulus extends CanvasWatchFaceService {
                     time *= 1000;
                     mCalendar.setTimeInMillis(time);
                     minutes = mCalendar.get(Calendar.MINUTE);
-                    if (d.precipProbability != null && d.precipIntensity != null) {
+                    if (d.precipProbability != null && d.precipIntensity != null &&
+                            time-currentTime <= 59*DateUtils.MINUTE_IN_MILLIS) {
                         double rain = d.precipIntensity * d.precipProbability;
                         rainPrediction[minutes] = (float) rain;
                     }
                 }
             }
+
+            mCalendar.setTimeInMillis(currentTime);
+            minutes = mCalendar.get(Calendar.MINUTE);
+            rainPrediction[(minutes-1+60)%60] = rainPrediction[minutes];
+            rainPrediction[(minutes-2+60)%60] = rainPrediction[minutes];
+            rainPrediction[(minutes-3+60)%60] = rainPrediction[(minutes-5+60)%60];
+            rainPrediction[(minutes-4+60)%60] = rainPrediction[(minutes-5+60)%60];
 
             mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.minor_tic_thickenss));
             for (int i=0; i<60; ++i) {//TODO fix base tics
@@ -292,6 +303,24 @@ public class Annulus extends CanvasWatchFaceService {
                     mHandPaint.setColor(rain_color);
                 } else {
                     mHandPaint.setColor(Color.WHITE);
+                }
+
+                int diff = (minutes-i+60)%60;
+                if (0 < diff && diff <= 5) {
+                    switch (diff) {
+                        case 0:
+                        case 5:
+                            length = ((float) (minor_tic_end-minor_tic_start));
+                            break;
+                        case 1:
+                        case 4:
+                            length = ((float) (minor_tic_end-minor_tic_start))*0.5f;
+                            break;
+                        case 2:
+                        case 3:
+                            length = 0;
+                            break;
+                    }
                 }
 
                 double ticRot = i/30.f * Math.PI;
@@ -431,7 +460,7 @@ public class Annulus extends CanvasWatchFaceService {
             mHandPaint.setColor(Color.WHITE);
             mHandPaint.setStyle(Paint.Style.STROKE);
 
-            mCalendar.setTimeInMillis(System.currentTimeMillis());
+            mCalendar.setTimeInMillis(currentTime);
 
             seconds = mCalendar.get(Calendar.SECOND);
             float secRot = (seconds / 30f) * (float) Math.PI;
