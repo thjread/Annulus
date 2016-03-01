@@ -143,7 +143,8 @@ public class Annulus extends CanvasWatchFaceService {
         static final float day_weather_len_max = 5.f;
         static final float day_weather_thick = 0.15f;
 
-        final int rain_color = Color.rgb(33, 150, 243);
+        final int rain_color = Color.rgb(100, 181, 246);
+        final int dark_rain_color = Color.rgb(33, 150, 243);
 
         static final int sun_r = 255; static final int sun_g = 213; static final int sun_b = 79;
 
@@ -273,6 +274,7 @@ public class Annulus extends CanvasWatchFaceService {
 
             float rainPrediction[] = new float[60];
             java.util.Arrays.fill(rainPrediction, 0);
+            boolean is_rain = false;
 
             if (weatherData != null && weatherData.minutely != null) {
                 for (WeatherService.Datum d : weatherData.minutely.data) {
@@ -284,6 +286,9 @@ public class Annulus extends CanvasWatchFaceService {
                             time-currentTime <= 59*DateUtils.MINUTE_IN_MILLIS) {
                         double rain = d.precipIntensity * d.precipProbability;
                         rainPrediction[minutes] = (float) rain;
+                        if (rain >= 0.1) {
+                            is_rain = true;
+                        }
                     }
                 }
             }
@@ -298,14 +303,14 @@ public class Annulus extends CanvasWatchFaceService {
             mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.minor_tic_thickenss));
             for (int i=0; i<60; ++i) {//TODO fix base tics
                 float length = minor_tic_end - minor_tic_start;
-                if (rainPrediction[i] >= 0.08) {
+                if (rainPrediction[i] >= 0.1) {
                     length += rainPrediction[i]*(minor_tic_start-max_rain_start)/assumed_max_rain;
                     mHandPaint.setColor(rain_color);
                 } else {
                     mHandPaint.setColor(Color.WHITE);
                 }
 
-                if (weatherData != null) {
+                if (weatherData != null && is_rain) {
                     int diff = (minutes - i + 60) % 60;
                     if (0 <= diff && diff <= 5) {
                         switch (diff) {
@@ -364,9 +369,12 @@ public class Annulus extends CanvasWatchFaceService {
                 public float cloudCover;
                 public float rot;
                 public float len;
-                public boolean dark;
+                public long time;
                 public int color;
             }
+
+            mCalendar.setTimeInMillis(currentTime);
+            int current_hour = mCalendar.get(Calendar.HOUR);
 
             if (weatherData != null && weatherData.hourly != null) {//TODO move to update function
                 List<DayWeatherPoint> dailyWeather = new ArrayList<>();
@@ -380,7 +388,9 @@ public class Annulus extends CanvasWatchFaceService {
 
                     float dataRot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
 
-                    if (mCalendar.getTimeInMillis() - System.currentTimeMillis() > DateUtils.HOUR_IN_MILLIS * 11.1) {
+                    if (time - System.currentTimeMillis() > DateUtils.HOUR_IN_MILLIS * 11.1
+                            || (time - System.currentTimeMillis() > DateUtils.HOUR_IN_MILLIS * 5 &&
+                            hours == current_hour)) {//TODO fix current_hour
                         break;
                     }
 
@@ -398,13 +408,7 @@ public class Annulus extends CanvasWatchFaceService {
                     }
                     p.rot = dataRot;
 
-                    if (d.time < weatherData.daily.data.get(0).sunriseTime
-                        || (d.time > weatherData.daily.data.get(0).sunsetTime &&
-                            d.time < weatherData.daily.data.get(1).sunriseTime)) {//TODO check for null
-                        p.dark = true;
-                    } else {
-                        p.dark = false;
-                    }
+                    p.time = d.time;
 
                     dailyWeather.add(p);
                 }
@@ -412,13 +416,28 @@ public class Annulus extends CanvasWatchFaceService {
                 DayWeatherPoint prev = null;
                 mHandPaint.setStyle(Paint.Style.FILL);
                 for (DayWeatherPoint p: dailyWeather) {
+
+                    boolean dark = false;
+                    long t = p.time+60*30;
+                    if (weatherData.daily != null && weatherData.daily.data.size() >= 2) {
+                        if (t < weatherData.daily.data.get(0).sunriseTime
+                                || (t > weatherData.daily.data.get(0).sunsetTime &&
+                                t < weatherData.daily.data.get(1).sunriseTime)) {
+                            dark = true;
+                        }
+                    }
+
                     float len = day_weather_len;
                     if (p.rain >= 0.08) {
                         len += (day_weather_len_max - day_weather_len) * p.rain / assumed_max_rain;
-                        p.color = rain_color;
+                        if (!dark) {
+                            p.color = rain_color;
+                        } else {
+                            p.color = dark_rain_color;
+                        }
                     } else {
                         int r, g, b;
-                        if (!p.dark) {
+                        if (!dark) {
                             r = g = b = (int) (p.cloudCover * 255.f);
                             r += (int) ((float) sun_r) * (1 - p.cloudCover);
                             g += (int) ((float) sun_g) * (1 - p.cloudCover);
