@@ -136,8 +136,8 @@ public class Annulus extends CanvasWatchFaceService {
 
         static final float circle_size = 0.3f;
 
-        static final float assumed_max_rain = 2.f;
-        static final float max_rain_start = 3.f;
+        static final float assumed_max_rain = 2.5f;
+        static final float max_rain_start = 3.5f;
 
         static final float day_weather_len = 3.f;
         static final float day_weather_len_max = 5.f;
@@ -305,21 +305,23 @@ public class Annulus extends CanvasWatchFaceService {
                     mHandPaint.setColor(Color.WHITE);
                 }
 
-                int diff = (minutes-i+60)%60;
-                if (0 < diff && diff <= 5) {
-                    switch (diff) {
-                        case 0:
-                        case 5:
-                            length = ((float) (minor_tic_end-minor_tic_start));
-                            break;
-                        case 1:
-                        case 4:
-                            length = ((float) (minor_tic_end-minor_tic_start))*0.5f;
-                            break;
-                        case 2:
-                        case 3:
-                            length = 0;
-                            break;
+                if (weatherData != null) {
+                    int diff = (minutes - i + 60) % 60;
+                    if (0 <= diff && diff <= 5) {
+                        switch (diff) {
+                            case 0:
+                            case 5:
+                                length = ((float) (minor_tic_end - minor_tic_start));
+                                break;
+                            case 1:
+                            case 4:
+                                length = ((float) (minor_tic_end - minor_tic_start)) * 0.5f;
+                                break;
+                            case 2:
+                            case 3:
+                                length = 0;
+                                break;
+                        }
                     }
                 }
 
@@ -363,6 +365,7 @@ public class Annulus extends CanvasWatchFaceService {
                 public float rot;
                 public float len;
                 public boolean dark;
+                public int color;
             }
 
             if (weatherData != null && weatherData.hourly != null) {//TODO move to update function
@@ -397,7 +400,7 @@ public class Annulus extends CanvasWatchFaceService {
 
                     if (d.time < weatherData.daily.data.get(0).sunriseTime
                         || (d.time > weatherData.daily.data.get(0).sunsetTime &&
-                            d.time < weatherData.daily.data.get(1).sunriseTime)) {
+                            d.time < weatherData.daily.data.get(1).sunriseTime)) {//TODO check for null
                         p.dark = true;
                     } else {
                         p.dark = false;
@@ -412,7 +415,7 @@ public class Annulus extends CanvasWatchFaceService {
                     float len = day_weather_len;
                     if (p.rain >= 0.08) {
                         len += (day_weather_len_max - day_weather_len) * p.rain / assumed_max_rain;
-                        mHandPaint.setColor(rain_color);
+                        p.color = rain_color;
                     } else {
                         int r, g, b;
                         if (!p.dark) {
@@ -423,7 +426,7 @@ public class Annulus extends CanvasWatchFaceService {
                         } else {
                             r = g = b = (int) (80 + p.cloudCover * 80.f);
                         }
-                        mHandPaint.setColor(Color.rgb(r, g, b));
+                        p.color = Color.rgb(r, g, b);
                     }
 
                     p.len = len;
@@ -452,6 +455,7 @@ public class Annulus extends CanvasWatchFaceService {
 
                         path.close();
 
+                        mHandPaint.setColor(prev.color);
                         canvas.drawPath(path, mHandPaint);
                     }
                     prev = p;
@@ -580,8 +584,8 @@ public class Annulus extends CanvasWatchFaceService {
         private void checkBackgroundUpdate() {
             mCalendar.setTimeInMillis(System.currentTimeMillis());
 
-            if (mCalendar.getTimeInMillis()-lastBackgroundUpdate > DateUtils.MINUTE_IN_MILLIS*3
-                    && mCalendar.get(Calendar.MINUTE)%5 <= 1) {
+            if (mCalendar.getTimeInMillis()-lastBackgroundUpdate >= DateUtils.SECOND_IN_MILLIS*40
+                    && mCalendar.get(Calendar.SECOND) <= 20) {
                 backgroundUpdate();
             }
         }
@@ -641,7 +645,9 @@ public class Annulus extends CanvasWatchFaceService {
         private void updateWeatherCapability(CapabilityInfo capabilityInfo) {
             Set<Node> connectedNodes = capabilityInfo.getNodes();
             mWeatherNodeId = pickBestNodeId(connectedNodes);
-            backgroundUpdate();
+            if (System.currentTimeMillis() > lastBackgroundUpdate + DateUtils.MINUTE_IN_MILLIS) {
+                backgroundUpdate();
+            }
         }
 
         private String pickBestNodeId(Set<Node> nodes) {
