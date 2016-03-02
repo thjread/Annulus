@@ -277,6 +277,8 @@ public class Annulus extends CanvasWatchFaceService {
 
             float rainPrediction[] = new float[60];
             java.util.Arrays.fill(rainPrediction, 0);
+            float rainProb[] = new float[60];
+            java.util.Arrays.fill(rainProb, 0);
             boolean is_rain = false;
 
             if (weatherData != null && weatherData.minutely != null) {
@@ -289,7 +291,9 @@ public class Annulus extends CanvasWatchFaceService {
                             time-currentTime <= 59*DateUtils.MINUTE_IN_MILLIS) {
                         double rain = d.precipIntensity * d.precipProbability;
                         rainPrediction[minutes] = (float) rain;
-                        if (rain >= 0.1) {
+                        double prob = d.precipProbability;
+                        rainProb[minutes] = (float) prob;
+                        if (rain >= 0.08) {
                             is_rain = true;
                         }
                     }
@@ -308,9 +312,12 @@ public class Annulus extends CanvasWatchFaceService {
             mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.minor_tic_thickenss));
             for (int i=0; i<60; ++i) {
                 float length = minor_tic_end - minor_tic_start;
-                if (rainPrediction[i] >= 0.1) {
+                if (rainPrediction[i] >= 0.08) {
                     length += rainPrediction[i]*(minor_tic_start-max_rain_start)/assumed_max_rain;
-                    mHandPaint.setColor(rain_color);
+                    float p = rainProb[i];
+                    mHandPaint.setColor(Color.rgb((int) (p*Color.red(rain_color)+255*(1-p)),
+                            (int) (p*Color.green(rain_color)+255*(1-p)),
+                            (int) (p*Color.blue(rain_color)+255*(1-p))));
                 } else {
                     mHandPaint.setColor(Color.WHITE);
                 }
@@ -501,7 +508,7 @@ public class Annulus extends CanvasWatchFaceService {
                     }
 
                     float len = day_weather_len;
-                    if (p.rain >= 0.1) {
+                    if (p.rain >= 0.07) {
                         len += (day_weather_len_max - day_weather_len) * p.rain / assumed_max_rain;
                         if (!dark) {
                             p.color = rain_color;
