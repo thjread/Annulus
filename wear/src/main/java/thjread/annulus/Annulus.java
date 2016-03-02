@@ -136,7 +136,7 @@ public class Annulus extends CanvasWatchFaceService {
 
         static final float circle_size = 0.3f;
 
-        static final float assumed_max_rain = 2.5f;
+        static final float assumed_max_rain = 3.f;
         static final float max_rain_start = 3.5f;
 
         static final float day_weather_len = 3.f;
@@ -144,12 +144,14 @@ public class Annulus extends CanvasWatchFaceService {
         static final float day_weather_thick = 0.15f;
 
         final int rain_color = Color.rgb(100, 181, 246);
-        final int dark_rain_color = Color.rgb(33, 150, 243);
+        final int dark_rain_color = Color.rgb(13, 71, 161);
 
         static final int sun_r = 255; static final int sun_g = 213; static final int sun_b = 79;
 
         boolean mIsRound;
         int mChinSize;
+
+        boolean rapid_update = false;
 
         boolean mApiConnected = false;
         GoogleApiClient mGoogleApiClient;
@@ -268,6 +270,7 @@ public class Annulus extends CanvasWatchFaceService {
             // portion.
             float centreX = bounds.width() / 2f;
             float centreY = bounds.height() / 2f;
+            float radius = centreX;
             float grid = centreX / grid_size;
 
             int seconds, minutes, hours;
@@ -293,15 +296,17 @@ public class Annulus extends CanvasWatchFaceService {
                 }
             }
 
+            if (is_rain) {
+                rapid_update = true;
+            } else {
+                rapid_update = false;
+            }
+
             mCalendar.setTimeInMillis(currentTime);
             minutes = mCalendar.get(Calendar.MINUTE);
-            rainPrediction[(minutes-1+60)%60] = rainPrediction[minutes];
-            rainPrediction[(minutes-2+60)%60] = rainPrediction[minutes];
-            rainPrediction[(minutes-3+60)%60] = rainPrediction[(minutes-5+60)%60];
-            rainPrediction[(minutes-4+60)%60] = rainPrediction[(minutes-5+60)%60];
 
             mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.minor_tic_thickenss));
-            for (int i=0; i<60; ++i) {//TODO fix base tics
+            for (int i=0; i<60; ++i) {
                 float length = minor_tic_end - minor_tic_start;
                 if (rainPrediction[i] >= 0.1) {
                     length += rainPrediction[i]*(minor_tic_start-max_rain_start)/assumed_max_rain;
@@ -312,34 +317,34 @@ public class Annulus extends CanvasWatchFaceService {
 
                 if (weatherData != null && is_rain) {
                     int diff = (minutes - i + 60) % 60;
-                    if (0 <= diff && diff <= 5) {
+                    if (0 < diff && diff < 5) {
                         switch (diff) {
-                            case 0:
-                            case 5:
-                                length = ((float) (minor_tic_end - minor_tic_start));
+                            case 4:
+                                length = minor_tic_end - minor_tic_start;
+                                break;
+                            case 3:
+                                length = (minor_tic_end - minor_tic_start) * 0.5f;
                                 break;
                             case 1:
-                            case 4:
-                                length = ((float) (minor_tic_end - minor_tic_start)) * 0.5f;
-                                break;
                             case 2:
-                            case 3:
                                 length = 0;
                                 break;
                         }
                     }
                 }
-
                 double ticRot = i/30.f * Math.PI;
-                float ticX = (float) Math.sin(ticRot) * (minor_tic_end-length) * grid;
-                float ticY = (float) -Math.cos(ticRot) * (minor_tic_end-length) * grid;
-                float ticXEnd = (float) Math.sin(ticRot) * minor_tic_end * grid;
-                float ticYEnd = (float) -Math.cos(ticRot) * minor_tic_end * grid;
-                if (ticYEnd+centreY > bounds.height()-mChinSize) {
-                    float height = ticYEnd - ticY;
-                    ticYEnd = bounds.height()-mChinSize-centreY;
-                    ticY = ticYEnd - height*0.8f;
+                float tic_end = minor_tic_end * grid;
+                length *= grid;
+                if (-Math.cos(ticRot)*tic_end + centreY > bounds.height()-mChinSize) {
+                    tic_end = (float) ((radius*2-mChinSize-centreY)/(-Math.cos(ticRot)));
+                    length *= ((radius-mChinSize)/radius) / (-Math.cos(ticRot));
                 }
+
+                float ticX = (float) Math.sin(ticRot) * (tic_end-length);
+                float ticY = (float) -Math.cos(ticRot) * (tic_end-length);
+                float ticXEnd = (float) Math.sin(ticRot) * tic_end;
+                float ticYEnd = (float) -Math.cos(ticRot) * tic_end;
+
                 canvas.drawLine(centreX + ticX, centreY + ticY, centreX + ticXEnd, centreY + ticYEnd, mHandPaint);
             }
 
@@ -348,14 +353,18 @@ public class Annulus extends CanvasWatchFaceService {
             mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.major_tic_thickenss));
             for (int i=0; i<12; ++i) {
                 double ticRot = i/6.f * Math.PI;
-                float ticX = (float) Math.sin(ticRot) * major_tic_start * grid;
-                float ticY = (float) -Math.cos(ticRot) * major_tic_start * grid;
-                float ticXEnd = (float) Math.sin(ticRot) * major_tic_end * grid;
-                float ticYEnd = (float) -Math.cos(ticRot) * major_tic_end * grid;
-                if (ticYEnd+centreY > bounds.height()-mChinSize) {
-                    ticY -= (ticYEnd+centreY - (bounds.height()-mChinSize))/2;
-                    ticYEnd = bounds.height()-mChinSize-centreY;
+                float tic_end = major_tic_end * grid;
+                float length = (major_tic_end-major_tic_start)*grid;
+                if (-Math.cos(ticRot)*tic_end + centreY > bounds.height()-mChinSize) {
+                    tic_end = (float) ((bounds.height()-mChinSize-centreY)/(-Math.cos(ticRot)));
+                    length *= ((radius-mChinSize)/radius) / (-Math.cos(ticRot));
                 }
+
+                float ticX = (float) Math.sin(ticRot) * (tic_end-length);
+                float ticY = (float) -Math.cos(ticRot) * (tic_end-length);
+                float ticXEnd = (float) Math.sin(ticRot) * tic_end;
+                float ticYEnd = (float) -Math.cos(ticRot) * tic_end;
+
                 canvas.drawLine(centreX + ticX, centreY + ticY, centreX + ticXEnd, centreY + ticYEnd, mHandPaint);
             }
 
@@ -371,11 +380,22 @@ public class Annulus extends CanvasWatchFaceService {
                 public float len;
                 public long time;
                 public int color;
+
+                public DayWeatherPoint () {
+
+                }
+
+                public DayWeatherPoint (DayWeatherPoint another) {
+                    this.rain = another.rain;
+                    this.cloudCover = another.cloudCover;
+                    this.rot = another.rot;
+                    this.len = another.len;
+                    this.time = another.time;
+                    this.color = another.color;
+                }
             }
 
-            mCalendar.setTimeInMillis(currentTime);
-            int current_hour = mCalendar.get(Calendar.HOUR);
-
+            long firstTime = -1;
             if (weatherData != null && weatherData.hourly != null) {//TODO move to update function
                 List<DayWeatherPoint> dailyWeather = new ArrayList<>();
 
@@ -388,10 +408,9 @@ public class Annulus extends CanvasWatchFaceService {
 
                     float dataRot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
 
-                    if (time - System.currentTimeMillis() > DateUtils.HOUR_IN_MILLIS * 11.1
-                            || (time - System.currentTimeMillis() > DateUtils.HOUR_IN_MILLIS * 5 &&
-                            hours == current_hour)) {//TODO fix current_hour
-                        break;
+                    if (time - currentTime > DateUtils.HOUR_IN_MILLIS * 11
+                            || time - currentTime < -DateUtils.HOUR_IN_MILLIS) {
+                        continue;
                     }
 
                     DayWeatherPoint p = new DayWeatherPoint();
@@ -409,26 +428,80 @@ public class Annulus extends CanvasWatchFaceService {
                     p.rot = dataRot;
 
                     p.time = d.time;
+                    if (firstTime == -1 || p.time < firstTime) {
+                        firstTime = p.time;
+                    }
 
                     dailyWeather.add(p);
+                }
+
+                boolean do_sun = false;
+                if (weatherData.daily != null && weatherData.daily.data.size() >= 2) {
+                    do_sun = true;
+                }
+                if (do_sun) {
+                    long nextChange;
+                    if (firstTime < weatherData.daily.data.get(0).sunriseTime) {
+                        nextChange = weatherData.daily.data.get(0).sunriseTime;
+                    } else if (firstTime < weatherData.daily.data.get(0).sunsetTime) {
+                        nextChange = weatherData.daily.data.get(0).sunsetTime;
+                    } else {
+                        nextChange = weatherData.daily.data.get(1).sunriseTime;
+                    }
+                    DayWeatherPoint prev = null;
+                    boolean already_there = false;
+                    int index;
+                    boolean found = false;
+                    for (index = 0; index < dailyWeather.size(); ++index) {
+                        long t = dailyWeather.get(index).time;
+                        if (t == nextChange) {
+                            already_there = true;
+                            found = true;
+                            break;
+                        } else if (t > nextChange) {
+                            found = true;
+                            break;
+                        }
+                        prev = dailyWeather.get(index);
+                    }
+                    if (!already_there && found) {
+                        DayWeatherPoint copy;
+                        if (prev == null) {
+                            prev = dailyWeather.get(0);
+                            copy = new DayWeatherPoint(prev);
+                            copy.time = nextChange;
+                            index = 0;
+                        } else {
+                            copy = new DayWeatherPoint(prev);
+                        }
+                        copy.time = nextChange;
+                        long time = copy.time;
+                        time *= 1000;
+                        mCalendar.setTimeInMillis(time);
+                        minutes = mCalendar.get(Calendar.MINUTE);
+                        hours = mCalendar.get(Calendar.HOUR);
+
+                        float rot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
+                        copy.rot = rot;
+                        dailyWeather.add(index, copy);
+                    }
                 }
 
                 DayWeatherPoint prev = null;
                 mHandPaint.setStyle(Paint.Style.FILL);
                 for (DayWeatherPoint p: dailyWeather) {
-
                     boolean dark = false;
-                    long t = p.time+60*30;
-                    if (weatherData.daily != null && weatherData.daily.data.size() >= 2) {
+                    long t = p.time;
+                    if (do_sun) {
                         if (t < weatherData.daily.data.get(0).sunriseTime
-                                || (t > weatherData.daily.data.get(0).sunsetTime &&
+                                || (t >= weatherData.daily.data.get(0).sunsetTime &&
                                 t < weatherData.daily.data.get(1).sunriseTime)) {
                             dark = true;
                         }
                     }
 
                     float len = day_weather_len;
-                    if (p.rain >= 0.08) {
+                    if (p.rain >= 0.1) {
                         len += (day_weather_len_max - day_weather_len) * p.rain / assumed_max_rain;
                         if (!dark) {
                             p.color = rain_color;
@@ -443,14 +516,14 @@ public class Annulus extends CanvasWatchFaceService {
                             g += (int) ((float) sun_g) * (1 - p.cloudCover);
                             b += (int) ((float) sun_b) * (1 - p.cloudCover);
                         } else {
-                            r = g = b = (int) (80 + p.cloudCover * 80.f);
+                            r = g = b = (int) (33 + p.cloudCover * 125.f);
                         }
                         p.color = Color.rgb(r, g, b);
                     }
 
                     p.len = len;
 
-                    if (prev != null) {//TODO
+                    if (prev != null) {
                         Path path = new Path();
 
                         float ang = prev.rot * 180.f / ((float) Math.PI) - 90.f;
@@ -603,9 +676,16 @@ public class Annulus extends CanvasWatchFaceService {
         private void checkBackgroundUpdate() {
             mCalendar.setTimeInMillis(System.currentTimeMillis());
 
-            if (mCalendar.getTimeInMillis()-lastBackgroundUpdate >= DateUtils.SECOND_IN_MILLIS*40
-                    && mCalendar.get(Calendar.SECOND) <= 20) {
-                backgroundUpdate();
+            if (!rapid_update) {
+                if (mCalendar.getTimeInMillis() - lastBackgroundUpdate >= DateUtils.MINUTE_IN_MILLIS
+                        && mCalendar.get(Calendar.MINUTE) % 2 == 0 && mCalendar.get(Calendar.SECOND) <= 30) {
+                    backgroundUpdate();
+                }
+            } else {
+                if (mCalendar.getTimeInMillis() - lastBackgroundUpdate >= DateUtils.SECOND_IN_MILLIS*40
+                        && mCalendar.get(Calendar.SECOND) <= 20) {
+                    backgroundUpdate();
+                }
             }
         }
 
@@ -664,7 +744,9 @@ public class Annulus extends CanvasWatchFaceService {
         private void updateWeatherCapability(CapabilityInfo capabilityInfo) {
             Set<Node> connectedNodes = capabilityInfo.getNodes();
             mWeatherNodeId = pickBestNodeId(connectedNodes);
-            if (System.currentTimeMillis() > lastBackgroundUpdate + DateUtils.MINUTE_IN_MILLIS) {
+            long updateFrequency = rapid_update ? DateUtils.MINUTE_IN_MILLIS : DateUtils.MINUTE_IN_MILLIS*2;
+            if (System.currentTimeMillis() > lastBackgroundUpdate + updateFrequency
+                    || weatherData == null) {
                 backgroundUpdate();
             }
         }
