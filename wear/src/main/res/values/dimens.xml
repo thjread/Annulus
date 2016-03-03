@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <dimen name="hour_thickenss">5dp</dimen>
-    <dimen name="minute_thickenss">4dp</dimen>
-    <dimen name="second_thickenss">2dp</dimen>
+    <dimen name="hour_thickness">5dp</dimen>
+    <dimen name="hour_tip_thickness">4dp</dimen>
+    <dimen name="hour_tip_length">4dp</dimen>
+    <dimen name="minute_thickness">4dp</dimen>
+    <dimen name="minute_tip_thickness">3.2dp</dimen>
+    <dimen name="minute_tip_length">4dp</dimen>
+    <dimen name="second_thickness">1.5dp</dimen>
+
 
     <dimen name="major_tic_thickenss">2dp</dimen>
     <dimen name="minor_tic_thickenss">1dp</dimen>

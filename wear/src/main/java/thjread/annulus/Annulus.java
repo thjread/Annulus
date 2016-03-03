@@ -587,22 +587,56 @@ public class Annulus extends CanvasWatchFaceService {
             if (!mAmbient) {
                 float secX = (float) Math.sin(secRot) * secLength;
                 float secY = (float) -Math.cos(secRot) * secLength;
-                mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.second_thickenss));
+                mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.second_thickness));
                 canvas.drawLine(centreX, centreY, centreX + secX, centreY + secY, mHandPaint);
             }
 
-            float minX = (float) Math.sin(minRot) * minLength;
-            float minY = (float) -Math.cos(minRot) * minLength;
-            mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.minute_thickenss));
-            canvas.drawLine(centreX, centreY, centreX + minX, centreY + minY, mHandPaint);
+            float minute_thickness = mRes.getDimension(R.dimen.minute_thickness);
+            float minute_tip_thickness = mRes.getDimension(R.dimen.minute_tip_thickness);
+            float minute_tip_length = mRes.getDimension(R.dimen.minute_tip_length);
+            mHandPaint.setStyle(Paint.Style.FILL);
+            Path p = handPath(minRot, minute_thickness, minute_tip_thickness, minLength, minute_tip_length,
+                    centreX, centreY);
+            canvas.drawPath(p, mHandPaint);
 
-            float hrX = (float) Math.sin(hrRot) * hrLength;
-            float hrY = (float) -Math.cos(hrRot) * hrLength;
-            mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.hour_thickenss));
-            canvas.drawLine(centreX, centreY, centreX + hrX, centreY + hrY, mHandPaint);
+            float hour_thickness = mRes.getDimension(R.dimen.hour_thickness);
+            float hour_tip_thickness = mRes.getDimension(R.dimen.hour_tip_thickness);
+            float hour_tip_length = mRes.getDimension(R.dimen.hour_tip_length);
+            p = handPath(hrRot, hour_thickness, hour_tip_thickness, hrLength, hour_tip_length,
+                    centreX, centreY);
+            canvas.drawPath(p, mHandPaint);
 
             mHandPaint.setStyle(Paint.Style.FILL);
             canvas.drawCircle(centreX, centreY, grid * circle_size, mHandPaint);
+        }
+
+        private Path handPath(float rot, float thickness, float tip_thickness, float length,
+                              float tip_length, float centreX, float centreY) {
+            float leftX = (float) Math.sin(rot-Math.PI/2.);
+            float leftY = (float) -Math.cos(rot-Math.PI/2.);
+            float upX = (float) Math.sin(rot);
+            float upY = (float) -Math.cos(rot);
+            Path p = new Path();
+            float x, y;
+            p.moveTo(centreX, centreY);
+            x = leftX*thickness/2.f;
+            y = leftY*thickness/2.f;
+            p.lineTo(centreX + x, centreY + y);
+            x = leftX*tip_thickness/2.f+upX*(length-tip_length);
+            y = leftY*tip_thickness/2.f+upY*(length-tip_length);
+            p.lineTo(centreX+x, centreY+y);
+            x = upX*length;
+            y = upY*length;
+            p.lineTo(centreX + x, centreY + y);
+            x = -leftX*tip_thickness/2.f+upX*(length-tip_length);
+            y = -leftY*tip_thickness/2.f+upY*(length-tip_length);
+            p.lineTo(centreX + x, centreY + y);
+            x = -leftX*thickness/2.f;
+            y = -leftY*thickness/2.f;
+            p.lineTo(centreX + x, centreY + y);
+            p.close();
+
+            return p;
         }
 
         @Override
