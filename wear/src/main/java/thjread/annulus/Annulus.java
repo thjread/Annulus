@@ -288,7 +288,8 @@ public class Annulus extends CanvasWatchFaceService {
                     mCalendar.setTimeInMillis(time);
                     minutes = mCalendar.get(Calendar.MINUTE);
                     if (d.precipProbability != null && d.precipIntensity != null &&
-                            time-currentTime <= 59*DateUtils.MINUTE_IN_MILLIS) {
+                            time-currentTime <= 59*DateUtils.MINUTE_IN_MILLIS &&
+                            time-currentTime >= -DateUtils.MINUTE_IN_MILLIS) {
                         double rain = d.precipIntensity * d.precipProbability;
                         rainPrediction[minutes] = (float) rain;
                         double prob = d.precipProbability;
@@ -508,7 +509,7 @@ public class Annulus extends CanvasWatchFaceService {
                     }
 
                     float len = day_weather_len;
-                    if (p.rain >= 0.07) {
+                    if (p.rain >= 0.05) {
                         len += (day_weather_len_max - day_weather_len) * p.rain / assumed_max_rain;
                         if (!dark) {
                             p.color = rain_color;
