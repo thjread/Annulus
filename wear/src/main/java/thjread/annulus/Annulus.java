@@ -249,6 +249,7 @@ public class Annulus extends CanvasWatchFaceService {
                     // The user has completed the tap gesture.
                     //mBackgroundPaint.setColor(mRes.getColor(mTapCount % 2 == 0 ?
                             //R.color.background : R.color.background2));
+                    backgroundUpdate();
                     break;
             }
             invalidate();
@@ -524,7 +525,7 @@ public class Annulus extends CanvasWatchFaceService {
                             g += (int) ((float) sun_g) * (1 - p.cloudCover);
                             b += (int) ((float) sun_b) * (1 - p.cloudCover);
                         } else {
-                            r = g = b = (int) (33 + p.cloudCover * 125.f);
+                            r = g = b = (int) (66 + p.cloudCover * 92.f);
                         }
                         p.color = Color.rgb(r, g, b);
                     }
@@ -719,14 +720,26 @@ public class Annulus extends CanvasWatchFaceService {
             mCalendar.setTimeInMillis(System.currentTimeMillis());
 
             if (!rapid_update) {
-                if (mCalendar.getTimeInMillis() - lastBackgroundUpdate >= DateUtils.MINUTE_IN_MILLIS
-                        && mCalendar.get(Calendar.MINUTE) % 2 == 0 && mCalendar.get(Calendar.SECOND) <= 30) {
-                    backgroundUpdate();
+                if (mAmbient) {
+                    if (mCalendar.getTimeInMillis() - lastBackgroundUpdate >= DateUtils.MINUTE_IN_MILLIS * 10
+                            && mCalendar.get(Calendar.MINUTE) % 20 < 4) {
+                        backgroundUpdate();
+                    }
+                } else {
+                    if (mCalendar.getTimeInMillis() - lastBackgroundUpdate >= DateUtils.MINUTE_IN_MILLIS * 5) {
+                        backgroundUpdate();
+                    }
                 }
             } else {
-                if (mCalendar.getTimeInMillis() - lastBackgroundUpdate >= DateUtils.SECOND_IN_MILLIS*40
-                        && mCalendar.get(Calendar.SECOND) <= 20) {
-                    backgroundUpdate();
+                if (mAmbient){
+                    if (mCalendar.getTimeInMillis() - lastBackgroundUpdate >= DateUtils.MINUTE_IN_MILLIS*3
+                            && mCalendar.get(Calendar.MINUTE) % 5 <= 1) {
+                        backgroundUpdate();
+                    }
+                } else {
+                    if (mCalendar.getTimeInMillis() - lastBackgroundUpdate >= DateUtils.MINUTE_IN_MILLIS) {
+                        backgroundUpdate();
+                    }
                 }
             }
         }
@@ -786,10 +799,10 @@ public class Annulus extends CanvasWatchFaceService {
         private void updateWeatherCapability(CapabilityInfo capabilityInfo) {
             Set<Node> connectedNodes = capabilityInfo.getNodes();
             mWeatherNodeId = pickBestNodeId(connectedNodes);
-            long updateFrequency = rapid_update ? DateUtils.MINUTE_IN_MILLIS : DateUtils.MINUTE_IN_MILLIS*2;
-            if (System.currentTimeMillis() > lastBackgroundUpdate + updateFrequency
-                    || weatherData == null) {
+            if (weatherData == null) {
                 backgroundUpdate();
+            } else {
+                checkBackgroundUpdate();
             }
         }
 
