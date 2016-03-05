@@ -136,7 +136,7 @@ public class Annulus extends CanvasWatchFaceService {
 
         static final float circle_size = 0.3f;
 
-        static final float assumed_max_rain = 3.f;
+        static final float assumed_max_rain = 4.5f;
         static final float max_rain_start = 3.5f;
 
         static final float day_weather_len = 3.f;
