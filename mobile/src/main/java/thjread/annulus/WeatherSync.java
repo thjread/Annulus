@@ -157,7 +157,7 @@ public class WeatherSync extends WearableListenerService implements GoogleApiCli
             return weatherData;
         }
 
-        Call call = service.getWeatherData(key, mLastLocation.getLatitude(), mLastLocation.getLongitude());//TODO
+        Call call = service.getWeatherData(key, mLastLocation.getLatitude(), mLastLocation.getLongitude());
         try {
             Response<WeatherService.WeatherData> r = call.execute();
             WeatherService.WeatherData data = r.body();

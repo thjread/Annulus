@@ -136,7 +136,7 @@ public class Annulus extends CanvasWatchFaceService {
 
         static final float circle_size = 0.3f;
 
-        static final float assumed_max_rain = 4.5f;
+        static final float assumed_max_rain = 6.f;
         static final float max_rain_start = 3.5f;
 
         static final float day_weather_len = 3.f;
@@ -295,7 +295,7 @@ public class Annulus extends CanvasWatchFaceService {
                         rainPrediction[minutes] = (float) rain;
                         double prob = d.precipProbability;
                         rainProb[minutes] = (float) prob;
-                        if (rain >= 0.08) {
+                        if (rain >= 0.12) {
                             is_rain = true;
                         }
                     }
@@ -314,7 +314,7 @@ public class Annulus extends CanvasWatchFaceService {
             mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.minor_tic_thickenss));
             for (int i=0; i<60; ++i) {
                 float length = minor_tic_end - minor_tic_start;
-                if (rainPrediction[i] >= 0.08) {
+                if (rainPrediction[i] >= 0.12) {
                     length += rainPrediction[i]*(minor_tic_start-max_rain_start)/assumed_max_rain;
                     float p = rainProb[i];
                     mHandPaint.setColor(Color.rgb((int) (p*Color.red(rain_color)+255*(1-p)),
@@ -424,7 +424,14 @@ public class Annulus extends CanvasWatchFaceService {
 
                     DayWeatherPoint p = new DayWeatherPoint();
                     if (d.precipProbability != null && d.precipIntensity != null) {
-                        double rain = d.precipProbability * d.precipIntensity;
+                        double prob = d.precipProbability;
+                        double intensity = d.precipIntensity;
+                        if (time < currentTime) {
+                            if (weatherData.currently != null && weatherData.currently.precipProbability != null) {
+                                prob = Math.max(prob, weatherData.currently.precipProbability);
+                            }
+                        }
+                        double rain = prob * intensity;
                         p.rain = (float) rain;
                     } else {
                         p.rain = 0;
@@ -510,7 +517,7 @@ public class Annulus extends CanvasWatchFaceService {
                     }
 
                     float len = day_weather_len;
-                    if (p.rain >= 0.05) {
+                    if (p.rain >= 0.06) {
                         len += (day_weather_len_max - day_weather_len) * p.rain / assumed_max_rain;
                         if (!dark) {
                             p.color = rain_color;
@@ -853,77 +860,5 @@ public class Annulus extends CanvasWatchFaceService {
         public void onConnectionFailed(@NonNull ConnectionResult cause) {
             mApiConnected = false;
         }
-
-        /*private class WeatherDatapoint {
-            Integer time;
-            Double temperature;
-            Double cloudCover;
-            Double precipProbability;
-            Double precipIntensity;
-        }
-
-        List<WeatherDatapoint> weatherData = null;
-
-        private void processWeatherData(WeatherService.WeatherData data) {
-            rawData = data;
-            weatherData = new ArrayList<>();
-
-            if (data.hourly != null && data.hourly.data != null) {
-                for (int i=data.hourly.data.size()-1; i>=0; --i) {
-                    if (!weatherData.isEmpty()) {
-                        weatherData.add(toDatapoint(data.hourly.data.get(i), weatherData.get(weatherData.size() - 1)));
-                    } else {
-                        weatherData.add(toDatapoint(data.hourly.data.get(i), null));
-                    }
-                }
-            }
-
-            if (data.minutely != null && data.minutely.data != null) {
-                for (int i=data.minutely.data.size()-1; i>=0; --i) {
-                    if (!weatherData.isEmpty()) {
-                        weatherData.add(toDatapoint(data.minutely.data.get(i), weatherData.get(weatherData.size() - 1)));
-                    } else {
-                        weatherData.add(toDatapoint(data.minutely.data.get(i), null));
-                    }
-                }
-            }
-
-            if (data.currently != null) {
-                if (!weatherData.isEmpty()) {
-                    weatherData.add(toDatapoint(data.currently, weatherData.get(weatherData.size() - 1)));
-                } else {
-                    weatherData.add(toDatapoint(data.currently, null));
-                }
-            }
-        }
-
-        private WeatherDatapoint toDatapoint(WeatherService.Datum datum, WeatherDatapoint backup) {
-            WeatherDatapoint datapoint = new WeatherDatapoint();
-
-            datapoint.time = datum.time;
-
-            if (datum.temperature != null) {
-                datapoint.temperature = datum.temperature;
-            } else if (backup != null) {
-                datapoint.temperature = backup.temperature;
-            }
-            if (datum.cloudCover != null) {
-                datapoint.cloudCover = datum.cloudCover;
-            } else if (backup != null) {
-                datapoint.cloudCover = backup.cloudCover;
-            }
-            if (datum.precipIntensity != null) {
-                datapoint.precipIntensity = datum.precipIntensity;
-            } else if (backup != null) {
-                datapoint.precipIntensity = backup.precipIntensity;
-            }
-            if (datum.precipProbability != null) {
-                datapoint.precipProbability = datum.precipProbability;
-            } else if (backup != null) {
-                datapoint.precipProbability = backup.precipProbability;
-            }
-
-            return datapoint;
-        }*/
     }
 }
