@@ -136,7 +136,7 @@ public class Annulus extends CanvasWatchFaceService {
 
         static final float circle_size = 0.3f;
 
-        static final float assumed_max_rain = 6.f;
+        static final float assumed_max_rain = 5.5f;
         static final float max_rain_start = 3.5f;
 
         static final float day_weather_len = 3.f;
@@ -411,16 +411,23 @@ public class Annulus extends CanvasWatchFaceService {
                 for (WeatherService.Datum d : weatherData.hourly.data) {
                     long time = d.time;
                     time *= 1000;
+
+                    if (time - currentTime >= DateUtils.HOUR_IN_MILLIS * 12
+                            || time - currentTime < -DateUtils.HOUR_IN_MILLIS) {
+                        continue;
+                    }
+                    if (time < currentTime) {
+                        time = currentTime;
+                    } else if (time > currentTime + DateUtils.HOUR_IN_MILLIS * 11){
+                        time = currentTime + DateUtils.HOUR_IN_MILLIS * 11;
+                    }
+
                     mCalendar.setTimeInMillis(time);
                     minutes = mCalendar.get(Calendar.MINUTE);
                     hours = mCalendar.get(Calendar.HOUR);
 
                     float dataRot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
 
-                    if (time - currentTime > DateUtils.HOUR_IN_MILLIS * 11
-                            || time - currentTime < -DateUtils.HOUR_IN_MILLIS) {
-                        continue;
-                    }
 
                     DayWeatherPoint p = new DayWeatherPoint();
                     if (d.precipProbability != null && d.precipIntensity != null) {
@@ -726,7 +733,7 @@ public class Annulus extends CanvasWatchFaceService {
         private void checkBackgroundUpdate() {
             mCalendar.setTimeInMillis(System.currentTimeMillis());
 
-            if (!rapid_update) {
+            if (!rapid_update && weatherData != null) {
                 if (mAmbient) {
                     if (mCalendar.getTimeInMillis() - lastBackgroundUpdate >= DateUtils.MINUTE_IN_MILLIS * 10
                             && mCalendar.get(Calendar.MINUTE) % 20 < 4) {
@@ -738,7 +745,7 @@ public class Annulus extends CanvasWatchFaceService {
                     }
                 }
             } else {
-                if (mAmbient){
+                if (mAmbient && weatherData != null){
                     if (mCalendar.getTimeInMillis() - lastBackgroundUpdate >= DateUtils.MINUTE_IN_MILLIS*3
                             && mCalendar.get(Calendar.MINUTE) % 5 <= 1) {
                         backgroundUpdate();
