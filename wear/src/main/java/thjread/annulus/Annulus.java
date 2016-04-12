@@ -60,6 +60,14 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
+class CalendarData implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
+
+    public String title;
+    public long begin;
+    public long end;
+}
+
 /**
  * Analog watch face with a ticking second hand. In ambient mode, the second hand isn't shown. On
  * devices with low-bit ambient mode, the hands are drawn without anti-aliasing in ambient mode.
@@ -136,7 +144,7 @@ public class Annulus extends CanvasWatchFaceService {
 
         static final float circle_size = 0.3f;
 
-        static final float assumed_max_rain = 5.5f;
+        static final float assumed_max_rain = 8.f;
         static final float max_rain_start = 3.5f;
 
         static final float day_weather_len = 3.f;
@@ -148,6 +156,14 @@ public class Annulus extends CanvasWatchFaceService {
 
         static final int sun_r = 255; static final int sun_g = 213; static final int sun_b = 79;
 
+        static final float calendar_len = 6f;
+        static final float calendar_thick = 0.15f;
+        static final float first_text = 2f;
+        static final float second_text = 4f;
+        static final float text_size = 1.25f;
+
+        final int calendar_colors[] = { Color.rgb(33, 150, 243), Color.rgb(156, 39, 176), Color.rgb(255, 87, 34) };
+
         boolean mIsRound;
         int mChinSize;
 
@@ -155,6 +171,8 @@ public class Annulus extends CanvasWatchFaceService {
 
         boolean mApiConnected = false;
         GoogleApiClient mGoogleApiClient;
+
+        boolean showCalendar = true;
 
         @Override
         public void onApplyWindowInsets(WindowInsets insets) {
@@ -250,6 +268,7 @@ public class Annulus extends CanvasWatchFaceService {
                     //mBackgroundPaint.setColor(mRes.getColor(mTapCount % 2 == 0 ?
                             //R.color.background : R.color.background2));
                     backgroundUpdate();
+                    showCalendar = !showCalendar;
                     break;
             }
             invalidate();
@@ -276,11 +295,35 @@ public class Annulus extends CanvasWatchFaceService {
 
             int seconds, minutes, hours;
 
+            mCalendar.setTimeInMillis(currentTime);
+
+            seconds = mCalendar.get(Calendar.SECOND);
+            float secRot = (seconds / 30f) * (float) Math.PI;
+            minutes = mCalendar.get(Calendar.MINUTE);
+            float minRot;
+            if (!mAmbient) {
+                minRot = ((minutes + (seconds / 60f)) / 30f) * (float) Math.PI;
+            } else {
+                minRot = (minutes / 30f) * (float) Math.PI;
+            }
+            hours = mCalendar.get(Calendar.HOUR);
+            float hrRot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
+
+
             float rainPrediction[] = new float[60];
             java.util.Arrays.fill(rainPrediction, 0);
             float rainProb[] = new float[60];
             java.util.Arrays.fill(rainProb, 0);
             boolean is_rain = false;
+
+            if (weatherData != null && weatherData.currently != null) {
+                long t = weatherData.currently.time;
+                t *= 1000;
+                if (currentTime - t >= 6 * DateUtils.HOUR_IN_MILLIS) {
+                    Log.d(TAG, "Weather data too old - deleting");
+                    weatherData = null;//Data is too old
+                }
+            }
 
             if (weatherData != null && weatherData.minutely != null) {
                 for (WeatherService.Datum d : weatherData.minutely.data) {
@@ -289,8 +332,8 @@ public class Annulus extends CanvasWatchFaceService {
                     mCalendar.setTimeInMillis(time);
                     minutes = mCalendar.get(Calendar.MINUTE);
                     if (d.precipProbability != null && d.precipIntensity != null &&
-                            time-currentTime <= 59*DateUtils.MINUTE_IN_MILLIS &&
-                            time-currentTime >= -DateUtils.MINUTE_IN_MILLIS) {
+                            time - currentTime <= 59 * DateUtils.MINUTE_IN_MILLIS &&
+                            time - currentTime >= -DateUtils.MINUTE_IN_MILLIS) {
                         double rain = d.precipIntensity * d.precipProbability;
                         rainPrediction[minutes] = (float) rain;
                         double prob = d.precipProbability;
@@ -312,14 +355,15 @@ public class Annulus extends CanvasWatchFaceService {
             minutes = mCalendar.get(Calendar.MINUTE);
 
             mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.minor_tic_thickenss));
-            for (int i=0; i<60; ++i) {
+            for (int i = 0; i < 60; ++i) {
                 float length = minor_tic_end - minor_tic_start;
                 if (rainPrediction[i] >= 0.12) {
-                    length += rainPrediction[i]*(minor_tic_start-max_rain_start)/assumed_max_rain;
+                    length += rainPrediction[i] * (minor_tic_start - max_rain_start) / assumed_max_rain;
+                    length = Math.min(length, minor_tic_end);
                     float p = rainProb[i];
-                    mHandPaint.setColor(Color.rgb((int) (p*Color.red(rain_color)+255*(1-p)),
-                            (int) (p*Color.green(rain_color)+255*(1-p)),
-                            (int) (p*Color.blue(rain_color)+255*(1-p))));
+                    mHandPaint.setColor(Color.rgb((int) (p * Color.red(rain_color) + 255 * (1 - p)),
+                            (int) (p * Color.green(rain_color) + 255 * (1 - p)),
+                            (int) (p * Color.blue(rain_color) + 255 * (1 - p))));
                 } else {
                     mHandPaint.setColor(Color.WHITE);
                 }
@@ -341,257 +385,274 @@ public class Annulus extends CanvasWatchFaceService {
                         }
                     }
                 }
-                double ticRot = i/30.f * Math.PI;
+                double ticRot = i / 30.f * Math.PI;
                 float tic_end = minor_tic_end * grid;
                 length *= grid;
-                if (-Math.cos(ticRot)*tic_end + centreY > bounds.height()-mChinSize) {
-                    tic_end = (float) ((radius*2-mChinSize-centreY)/(-Math.cos(ticRot)));
-                    length *= ((radius-mChinSize)/radius) / (-Math.cos(ticRot));
+                if (-Math.cos(ticRot) * tic_end + centreY > bounds.height() - mChinSize) {
+                    tic_end = (float) ((radius * 2 - mChinSize - centreY) / (-Math.cos(ticRot)));
+                    length *= ((radius - mChinSize) / radius) / (-Math.cos(ticRot));
                 }
 
-                float ticX = (float) Math.sin(ticRot) * (tic_end-length);
-                float ticY = (float) -Math.cos(ticRot) * (tic_end-length);
+                float ticX = (float) Math.sin(ticRot) * (tic_end - length);
+                float ticY = (float) -Math.cos(ticRot) * (tic_end - length);
                 float ticXEnd = (float) Math.sin(ticRot) * tic_end;
                 float ticYEnd = (float) -Math.cos(ticRot) * tic_end;
 
                 canvas.drawLine(centreX + ticX, centreY + ticY, centreX + ticXEnd, centreY + ticYEnd, mHandPaint);
+            }
+
+            if (showCalendar) {
+                ArrayList<CalendarData> currentEvents = new ArrayList<CalendarData>();
+
+                if (calendarData != null) {
+                    for (CalendarData c : calendarData) {
+                        if (c.begin < currentTime + DateUtils.MINUTE_IN_MILLIS * 57 && c.end > currentTime) {
+                            currentEvents.add(c);
+                        }
+                    }
+                }
+
+                mHandPaint.setStyle(Paint.Style.FILL);
+                mHandPaint.setTextSize(text_size * grid);
+                int i = 0;
+                for (CalendarData c: currentEvents) {
+                    mHandPaint.setColor(calendar_colors[i%3]);
+                    if (i == 0) {
+                        float width = mHandPaint.measureText(c.title);
+                        float height;
+                        if (currentEvents.size() == 1) {
+                            height = (first_text+second_text)*0.5f;
+                        } else {
+                            height = first_text;
+                        }
+                        canvas.drawText(c.title, centreX - width / 2.f, centreY + height * grid, mHandPaint);
+                    } else if (i == 1) {
+                        float width = mHandPaint.measureText(c.title);
+                        canvas.drawText(c.title, centreX - width / 2.f, centreY + second_text * grid, mHandPaint);
+                    }
+
+                    float start_rot;
+                    if (c.begin <= currentTime) {
+                        start_rot = minRot;
+                    } else {
+                        mCalendar.setTimeInMillis(c.begin);
+                        float start_minutes = mCalendar.get(Calendar.MINUTE);
+                        start_rot = (start_minutes / 30f) * (float) Math.PI;
+                    }
+
+                    mCalendar.setTimeInMillis(Math.min(c.end, currentTime + DateUtils.MINUTE_IN_MILLIS*57));
+                    float end_minutes = mCalendar.get(Calendar.MINUTE);
+                    float end_rot = (end_minutes / 30f) * (float) Math.PI;
+
+                    Path path = arcPath(start_rot, end_rot, calendar_len-calendar_thick, calendar_len, centreX, centreY, grid);
+                    canvas.drawPath(path, mHandPaint);
+                    i++;
+                }
             }
 
             mHandPaint.setColor(Color.WHITE);
 
             mHandPaint.setStrokeWidth(mRes.getDimension(R.dimen.major_tic_thickenss));
-            for (int i=0; i<12; ++i) {
-                double ticRot = i/6.f * Math.PI;
+            for (int i = 0; i < 12; ++i) {
+                double ticRot = i / 6.f * Math.PI;
                 float tic_end = major_tic_end * grid;
-                float length = (major_tic_end-major_tic_start)*grid;
-                if (-Math.cos(ticRot)*tic_end + centreY > bounds.height()-mChinSize) {
-                    tic_end = (float) ((bounds.height()-mChinSize-centreY)/(-Math.cos(ticRot)));
-                    length *= ((radius-mChinSize)/radius) / (-Math.cos(ticRot));
+                float length = (major_tic_end - major_tic_start) * grid;
+                if (-Math.cos(ticRot) * tic_end + centreY > bounds.height() - mChinSize) {
+                    tic_end = (float) ((bounds.height() - mChinSize - centreY) / (-Math.cos(ticRot)));
+                    length *= ((radius - mChinSize) / radius) / (-Math.cos(ticRot));
                 }
 
-                float ticX = (float) Math.sin(ticRot) * (tic_end-length);
-                float ticY = (float) -Math.cos(ticRot) * (tic_end-length);
+                float ticX = (float) Math.sin(ticRot) * (tic_end - length);
+                float ticY = (float) -Math.cos(ticRot) * (tic_end - length);
                 float ticXEnd = (float) Math.sin(ticRot) * tic_end;
                 float ticYEnd = (float) -Math.cos(ticRot) * tic_end;
 
                 canvas.drawLine(centreX + ticX, centreY + ticY, centreX + ticXEnd, centreY + ticYEnd, mHandPaint);
             }
 
-            /*mHandPaint.setStyle(Paint.Style.STROKE);
-            for (int i=0; i<grid; ++i) {
-                canvas.drawCircle(centreX, centreY, grid * i, mHandPaint);
-            }*/
+            if (!showCalendar) {
+                /*mHandPaint.setStyle(Paint.Style.STROKE);
+                for (int i=0; i<grid; ++i) {
+                    canvas.drawCircle(centreX, centreY, grid * i, mHandPaint);
+                }*/
 
-            class DayWeatherPoint {
-                public float rain;
-                public float cloudCover;
-                public float rot;
-                public float len;
-                public long time;
-                public int color;
+                class DayWeatherPoint {
+                    public float rain;
+                    public float cloudCover;
+                    public float rot;
+                    public float len;
+                    public long time;
+                    public int color;
 
-                public DayWeatherPoint () {
+                    public DayWeatherPoint() {
 
+                    }
+
+                    public DayWeatherPoint(DayWeatherPoint another) {
+                        this.rain = another.rain;
+                        this.cloudCover = another.cloudCover;
+                        this.rot = another.rot;
+                        this.len = another.len;
+                        this.time = another.time;
+                        this.color = another.color;
+                    }
                 }
 
-                public DayWeatherPoint (DayWeatherPoint another) {
-                    this.rain = another.rain;
-                    this.cloudCover = another.cloudCover;
-                    this.rot = another.rot;
-                    this.len = another.len;
-                    this.time = another.time;
-                    this.color = another.color;
-                }
-            }
+                long firstTime = -1;
+                if (weatherData != null && weatherData.hourly != null) {//TODO move to update function
+                    List<DayWeatherPoint> dailyWeather = new ArrayList<>();
 
-            long firstTime = -1;
-            if (weatherData != null && weatherData.hourly != null) {//TODO move to update function
-                List<DayWeatherPoint> dailyWeather = new ArrayList<>();
-
-                for (WeatherService.Datum d : weatherData.hourly.data) {
-                    long time = d.time;
-                    time *= 1000;
-
-                    if (time - currentTime >= DateUtils.HOUR_IN_MILLIS * 12
-                            || time - currentTime < -DateUtils.HOUR_IN_MILLIS) {
-                        continue;
-                    }
-                    if (time < currentTime) {
-                        time = currentTime;
-                    } else if (time > currentTime + DateUtils.HOUR_IN_MILLIS * 11){
-                        time = currentTime + DateUtils.HOUR_IN_MILLIS * 11;
-                    }
-
-                    mCalendar.setTimeInMillis(time);
-                    minutes = mCalendar.get(Calendar.MINUTE);
-                    hours = mCalendar.get(Calendar.HOUR);
-
-                    float dataRot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
-
-
-                    DayWeatherPoint p = new DayWeatherPoint();
-                    if (d.precipProbability != null && d.precipIntensity != null) {
-                        double prob = d.precipProbability;
-                        double intensity = d.precipIntensity;
-                        if (time < currentTime) {
-                            if (weatherData.currently != null && weatherData.currently.precipProbability != null) {
-                                prob = Math.max(prob, weatherData.currently.precipProbability);
-                            }
-                        }
-                        double rain = prob * intensity;
-                        p.rain = (float) rain;
-                    } else {
-                        p.rain = 0;
-                    }
-
-                    if (d.cloudCover != null) {
-                        double cloud = d.cloudCover;
-                        p.cloudCover = (float) cloud;
-                    }
-                    p.rot = dataRot;
-
-                    p.time = d.time;
-                    if (firstTime == -1 || p.time < firstTime) {
-                        firstTime = p.time;
-                    }
-
-                    dailyWeather.add(p);
-                }
-
-                boolean do_sun = false;
-                if (weatherData.daily != null && weatherData.daily.data.size() >= 2) {
-                    do_sun = true;
-                }
-                if (do_sun) {
-                    long nextChange;
-                    if (firstTime < weatherData.daily.data.get(0).sunriseTime) {
-                        nextChange = weatherData.daily.data.get(0).sunriseTime;
-                    } else if (firstTime < weatherData.daily.data.get(0).sunsetTime) {
-                        nextChange = weatherData.daily.data.get(0).sunsetTime;
-                    } else {
-                        nextChange = weatherData.daily.data.get(1).sunriseTime;
-                    }
-                    DayWeatherPoint prev = null;
-                    boolean already_there = false;
-                    int index;
-                    boolean found = false;
-                    for (index = 0; index < dailyWeather.size(); ++index) {
-                        long t = dailyWeather.get(index).time;
-                        if (t == nextChange) {
-                            already_there = true;
-                            found = true;
-                            break;
-                        } else if (t > nextChange) {
-                            found = true;
-                            break;
-                        }
-                        prev = dailyWeather.get(index);
-                    }
-                    if (!already_there && found) {
-                        DayWeatherPoint copy;
-                        if (prev == null) {
-                            prev = dailyWeather.get(0);
-                            copy = new DayWeatherPoint(prev);
-                            copy.time = nextChange;
-                            index = 0;
-                        } else {
-                            copy = new DayWeatherPoint(prev);
-                        }
-                        copy.time = nextChange;
-                        long time = copy.time;
+                    for (WeatherService.Datum d : weatherData.hourly.data) {
+                        long time = d.time;
                         time *= 1000;
+
+                        if (time - currentTime >= DateUtils.HOUR_IN_MILLIS * 12
+                                || time - currentTime < -DateUtils.HOUR_IN_MILLIS) {
+                            continue;
+                        }
+                        if (time < currentTime) {
+                            time = currentTime;
+                        } else if (time > currentTime + DateUtils.HOUR_IN_MILLIS * 11) {
+                            time = currentTime + DateUtils.HOUR_IN_MILLIS * 11;
+                        }
+
                         mCalendar.setTimeInMillis(time);
                         minutes = mCalendar.get(Calendar.MINUTE);
                         hours = mCalendar.get(Calendar.HOUR);
 
-                        float rot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
-                        copy.rot = rot;
-                        dailyWeather.add(index, copy);
-                    }
-                }
+                        float dataRot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
 
-                DayWeatherPoint prev = null;
-                mHandPaint.setStyle(Paint.Style.FILL);
-                for (DayWeatherPoint p: dailyWeather) {
-                    boolean dark = false;
-                    long t = p.time;
+
+                        DayWeatherPoint p = new DayWeatherPoint();
+                        if (d.precipProbability != null && d.precipIntensity != null) {
+                            double prob = d.precipProbability;
+                            double intensity = d.precipIntensity;
+                            if (time <= currentTime) {
+                                if (weatherData.currently != null && weatherData.currently.precipProbability != null) {
+                                    prob = Math.max(prob, weatherData.currently.precipProbability);
+                                }
+                            }
+                            double rain = prob * intensity;
+                            p.rain = (float) rain;
+                        } else {
+                            p.rain = 0;
+                        }
+
+                        if (d.cloudCover != null) {
+                            double cloud = d.cloudCover;
+                            p.cloudCover = (float) cloud;
+                        }
+                        p.rot = dataRot;
+
+                        p.time = d.time;
+                        if (firstTime == -1 || p.time < firstTime) {
+                            firstTime = p.time;
+                        }
+
+                        dailyWeather.add(p);
+                    }
+
+                    boolean do_sun = false;
+                    if (weatherData.daily != null && weatherData.daily.data.size() >= 2) {
+                        do_sun = true;
+                    }
                     if (do_sun) {
-                        if (t < weatherData.daily.data.get(0).sunriseTime
-                                || (t >= weatherData.daily.data.get(0).sunsetTime &&
-                                t < weatherData.daily.data.get(1).sunriseTime)) {
-                            dark = true;
-                        }
-                    }
-
-                    float len = day_weather_len;
-                    if (p.rain >= 0.06) {
-                        len += (day_weather_len_max - day_weather_len) * p.rain / assumed_max_rain;
-                        if (!dark) {
-                            p.color = rain_color;
+                        long nextChange;
+                        if (firstTime < weatherData.daily.data.get(0).sunriseTime) {
+                            nextChange = weatherData.daily.data.get(0).sunriseTime;
+                        } else if (firstTime < weatherData.daily.data.get(0).sunsetTime) {
+                            nextChange = weatherData.daily.data.get(0).sunsetTime;
                         } else {
-                            p.color = dark_rain_color;
+                            nextChange = weatherData.daily.data.get(1).sunriseTime;
                         }
-                    } else {
-                        int r, g, b;
-                        if (!dark) {
-                            r = g = b = (int) (p.cloudCover * 255.f);
-                            r += (int) ((float) sun_r) * (1 - p.cloudCover);
-                            g += (int) ((float) sun_g) * (1 - p.cloudCover);
-                            b += (int) ((float) sun_b) * (1 - p.cloudCover);
+
+                        if (nextChange - currentTime < DateUtils.HOUR_IN_MILLIS * 12
+                                || nextChange - currentTime >= -DateUtils.HOUR_IN_MILLIS) {
+
+                            DayWeatherPoint prev = null;
+                            int index;
+                            boolean found = false;
+                            for (index = 0; index < dailyWeather.size(); ++index) {
+                                long t = dailyWeather.get(index).time;
+                                if (t > nextChange) {
+                                    index--;
+                                    break;
+                                }
+                                prev = dailyWeather.get(index);
+                            }
+
+                            DayWeatherPoint copy;
+                            if (prev == null) {
+                                prev = dailyWeather.get(0);
+                            }
+
+                            copy = new DayWeatherPoint(prev);
+
+                            copy.time = nextChange;
+                            long time = copy.time;
+                            time *= 1000;
+
+                            mCalendar.setTimeInMillis(time);
+                            minutes = mCalendar.get(Calendar.MINUTE);
+                            hours = mCalendar.get(Calendar.HOUR);
+
+                            float rot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
+                            copy.rot = rot;
+
+                            dailyWeather.add(index+1, copy);
+                        }
+                    }
+
+                    DayWeatherPoint prev = null;
+                    mHandPaint.setStyle(Paint.Style.FILL);
+                    for (DayWeatherPoint p : dailyWeather) {
+                        boolean dark = false;
+                        long t = p.time;
+                        if (do_sun) {
+                            if (t < weatherData.daily.data.get(0).sunriseTime
+                                    || (t >= weatherData.daily.data.get(0).sunsetTime &&
+                                    t < weatherData.daily.data.get(1).sunriseTime)) {
+                                dark = true;
+                            }
+                        }
+
+                        float len = day_weather_len;
+                        if (p.rain >= 0.06) {
+                            len += (day_weather_len_max - day_weather_len) * p.rain / assumed_max_rain;
+                            if (!dark) {
+                                p.color = rain_color;
+                            } else {
+                                p.color = dark_rain_color;
+                            }
                         } else {
-                            r = g = b = (int) (66 + p.cloudCover * 92.f);
+                            int r, g, b;
+                            if (!dark) {
+                                r = g = b = (int) (p.cloudCover * 255.f);
+                                r += (int) ((float) sun_r) * (1 - p.cloudCover);
+                                g += (int) ((float) sun_g) * (1 - p.cloudCover);
+                                b += (int) ((float) sun_b) * (1 - p.cloudCover);
+                            } else {
+                                r = g = b = (int) (66 + p.cloudCover * 92.f);
+                            }
+                            p.color = Color.rgb(r, g, b);
                         }
-                        p.color = Color.rgb(r, g, b);
+
+                        p.len = len;
+
+                        if (prev != null) {
+                            Path path = arcPath(prev.rot, p.rot, day_weather_len, prev.len + day_weather_thick,
+                                    centreX, centreY, grid);
+
+                            mHandPaint.setColor(prev.color);
+                            canvas.drawPath(path, mHandPaint);
+                        }
+                        prev = p;
                     }
-
-                    p.len = len;
-
-                    if (prev != null) {
-                        Path path = new Path();
-
-                        float ang = prev.rot * 180.f / ((float) Math.PI) - 90.f;
-                        float sweep = p.rot * 180.f / ((float) Math.PI) - 90.f - ang;
-                        sweep = (720 + sweep) % 360;
-                        sweep += 1;//ensure segments overlap
-                        path.arcTo(centreX - (prev.len + day_weather_thick) * grid,
-                                centreY - (prev.len + day_weather_thick) * grid,
-                                centreX + (prev.len + day_weather_thick) * grid,
-                                centreY + (prev.len + day_weather_thick) * grid,
-                                ang, sweep, true);
-
-                        float x = centreX + (float) Math.sin(p.rot) * day_weather_len * grid;
-                        float y = centreY - (float) Math.cos(p.rot) * day_weather_len * grid;
-                        path.lineTo(x, y);
-
-                        path.arcTo(centreX - day_weather_len * grid, centreY - day_weather_len * grid,
-                                centreX + day_weather_len * grid,
-                                centreY + day_weather_len * grid,
-                                ang + sweep, -sweep, false);
-
-                        path.close();
-
-                        mHandPaint.setColor(prev.color);
-                        canvas.drawPath(path, mHandPaint);
-                    }
-                    prev = p;
                 }
             }
+
             mHandPaint.setColor(Color.WHITE);
             mHandPaint.setStyle(Paint.Style.STROKE);
-
-            mCalendar.setTimeInMillis(currentTime);
-
-            seconds = mCalendar.get(Calendar.SECOND);
-            float secRot = (seconds / 30f) * (float) Math.PI;
-            minutes = mCalendar.get(Calendar.MINUTE);
-            float minRot;
-            if (!mAmbient) {
-                minRot = ((minutes + (seconds / 60f)) / 30f) * (float) Math.PI;
-            } else {
-                minRot = (minutes / 30f) * (float) Math.PI;
-            }
-            hours = mCalendar.get(Calendar.HOUR);
-            float hrRot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
 
             float secLength = second_length * grid;
             float minLength = minute_length * grid;
@@ -623,6 +684,35 @@ public class Annulus extends CanvasWatchFaceService {
 
             mHandPaint.setStyle(Paint.Style.FILL);
             canvas.drawCircle(centreX, centreY, grid * circle_size, mHandPaint);
+        }
+
+        private Path arcPath(float start_rot, float end_rot, float inner_radius, float outer_radius,
+                             float centreX, float centreY, float grid) {
+            Path path = new Path();
+
+            float ang = start_rot * 180.f / ((float) Math.PI) - 90.f;
+            float sweep = end_rot * 180.f / ((float) Math.PI) - 90.f - ang;
+            sweep = (720 + sweep) % 360;
+            sweep += 1;//ensure segments overlap
+
+            path.arcTo(centreX - outer_radius * grid,
+                    centreY - outer_radius * grid,
+                    centreX + outer_radius * grid,
+                    centreY + outer_radius * grid,
+                    ang, sweep, true);
+
+            float x = centreX + (float) Math.sin(end_rot) * inner_radius * grid;
+            float y = centreY - (float) Math.cos(end_rot) * inner_radius * grid;
+            path.lineTo(x, y);
+
+            path.arcTo(centreX - inner_radius * grid, centreY - inner_radius * grid,
+                    centreX + inner_radius * grid,
+                    centreY + inner_radius * grid,
+                    ang + sweep, -sweep, false);
+
+            path.close();
+
+            return path;
         }
 
         private Path handPath(float rot, float thickness, float tip_thickness, float length,
@@ -775,10 +865,22 @@ public class Annulus extends CanvasWatchFaceService {
                         }
                 );
             }
+
+            if (mWeatherNodeId != null && mApiConnected) {
+                Wearable.MessageApi.sendMessage(mGoogleApiClient, mWeatherNodeId,
+                        CALENDAR_PATH, data).setResultCallback(
+                        new ResultCallback<MessageApi.SendMessageResult>() {
+                            @Override
+                            public void onResult(@NonNull MessageApi.SendMessageResult result) {
+                            }
+                        }
+                );
+            }
         }
 
         private static final String WEATHER_CAPABILITY_NAME = "annulus_weather_data";
         private static final String WEATHER_PATH = "/annulus_weather_data";
+        private static final String CALENDAR_PATH = "/annulus_calendar_data";
 
         @Override
         public void onConnected(Bundle connectionHint) {
@@ -840,23 +942,44 @@ public class Annulus extends CanvasWatchFaceService {
         }
 
         WeatherService.WeatherData weatherData = null;
+        ArrayList<CalendarData> calendarData = null;
 
         @Override
         public void onMessageReceived(MessageEvent messageEvent) {
             byte[] d = messageEvent.getData();
-            WeatherService.WeatherData data = null;
-            try {
-                data = (WeatherService.WeatherData) convertFromBytes(d);
-            } catch (IOException e) {
-                Log.e(TAG, "Weather data conversion from bytes failed");
-            } catch (ClassNotFoundException e) {
+            if (messageEvent.getPath().equals(WEATHER_PATH)) {
+                Log.d(TAG, "Processing weather message");
+                WeatherService.WeatherData data = null;
+                try {
+                    data = (WeatherService.WeatherData) convertFromBytes(d);
+                } catch (IOException e) {
+                    Log.e(TAG, "Weather data conversion from bytes failed");
+                    Log.e(TAG, e.getMessage());
+                } catch (ClassNotFoundException e) {
 
-            }
+                }
 
-            if (data != null) {
-                Log.d(TAG, "Weather data received");
-                weatherData = data;
-                invalidate();
+                if (data != null) {
+                    Log.d(TAG, "Weather data received");
+                    weatherData = data;
+                    invalidate();
+                }
+            } else if (messageEvent.getPath().equals(CALENDAR_PATH)) {
+                Log.d(TAG, "Processing calendar message");
+                ArrayList<CalendarData> data = null;
+                try {
+                    data = (ArrayList<CalendarData>) convertFromBytes(d);
+                } catch (IOException e) {
+                    Log.e(TAG, "Calendar data conversion from bytes failed");
+                } catch (ClassNotFoundException e) {
+
+                }
+
+                if (data != null) {
+                    Log.d(TAG, "Calendar data received");
+                    calendarData = data;
+                    invalidate();
+                }
             }
         }
 

@@ -73,6 +73,8 @@ public interface WeatherService {
     }
 
     class WeatherData implements java.io.Serializable{
+        private static final long serialVersionUID = 1L;
+
         public Double latitude;
         public Double longitude;
         public String timezone;
