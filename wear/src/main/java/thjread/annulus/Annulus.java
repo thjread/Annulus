@@ -162,7 +162,8 @@ public class Annulus extends CanvasWatchFaceService {
         static final float second_text = 4f;
         static final float text_size = 1.25f;
 
-        final int calendar_colors[] = { Color.rgb(33, 150, 243), Color.rgb(156, 39, 176), Color.rgb(255, 87, 34) };
+        final int calendar_colors[] = { Color.rgb(33, 150, 243), Color.rgb(171, 71, 188), Color.rgb(255, 87, 34) };
+        final int calendar_colors_bright[] = { Color.rgb(144,202,249), Color.rgb(206,147,216), Color.rgb(255,171,145) };
 
         boolean mIsRound;
         int mChinSize;
@@ -173,6 +174,8 @@ public class Annulus extends CanvasWatchFaceService {
         GoogleApiClient mGoogleApiClient;
 
         boolean showCalendar = true;
+
+        boolean wereEvents = false;
 
         @Override
         public void onApplyWindowInsets(WindowInsets insets) {
@@ -401,36 +404,31 @@ public class Annulus extends CanvasWatchFaceService {
                 canvas.drawLine(centreX + ticX, centreY + ticY, centreX + ticXEnd, centreY + ticYEnd, mHandPaint);
             }
 
-            if (showCalendar) {
-                ArrayList<CalendarData> currentEvents = new ArrayList<CalendarData>();
 
-                if (calendarData != null) {
-                    for (CalendarData c : calendarData) {
-                        if (c.begin < currentTime + DateUtils.MINUTE_IN_MILLIS * 57 && c.end > currentTime) {
-                            currentEvents.add(c);
-                        }
+            ArrayList<CalendarData> currentEvents = new ArrayList<CalendarData>();
+
+            if (calendarData != null) {
+                for (CalendarData c : calendarData) {
+                    if (c.begin < currentTime + DateUtils.MINUTE_IN_MILLIS * 57 && c.end > currentTime) {
+                        currentEvents.add(c);
                     }
                 }
+            }
 
+            if (currentEvents.isEmpty() && wereEvents) {
+                showCalendar = false;
+                wereEvents = false;
+            } else if (!currentEvents.isEmpty() && !wereEvents) {
+                showCalendar = true;
+                wereEvents = true;
+            }
+
+            if (showCalendar) {
                 mHandPaint.setStyle(Paint.Style.FILL);
                 mHandPaint.setTextSize(text_size * grid);
                 int i = 0;
                 for (CalendarData c: currentEvents) {
                     mHandPaint.setColor(calendar_colors[i%3]);
-                    if (i == 0) {
-                        float width = mHandPaint.measureText(c.title);
-                        float height;
-                        if (currentEvents.size() == 1) {
-                            height = (first_text+second_text)*0.5f;
-                        } else {
-                            height = first_text;
-                        }
-                        canvas.drawText(c.title, centreX - width / 2.f, centreY + height * grid, mHandPaint);
-                    } else if (i == 1) {
-                        float width = mHandPaint.measureText(c.title);
-                        canvas.drawText(c.title, centreX - width / 2.f, centreY + second_text * grid, mHandPaint);
-                    }
-
                     float start_rot;
                     if (c.begin <= currentTime) {
                         start_rot = minRot;
@@ -446,6 +444,23 @@ public class Annulus extends CanvasWatchFaceService {
 
                     Path path = arcPath(start_rot, end_rot, calendar_len-calendar_thick, calendar_len, centreX, centreY, grid);
                     canvas.drawPath(path, mHandPaint);
+
+                    mHandPaint.setColor(calendar_colors_bright[i%3]);
+
+                    if (i == 0) {
+                        float width = mHandPaint.measureText(c.title);
+                        float height;
+                        if (currentEvents.size() == 1) {
+                            height = (first_text+second_text)*0.5f;
+                        } else {
+                            height = first_text;
+                        }
+                        canvas.drawText(c.title, centreX - width / 2.f, centreY + height * grid, mHandPaint);
+                    } else if (i == 1) {
+                        float width = mHandPaint.measureText(c.title);
+                        canvas.drawText(c.title, centreX - width / 2.f, centreY + second_text * grid, mHandPaint);
+                    }
+
                     i++;
                 }
             }
