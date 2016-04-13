@@ -577,20 +577,20 @@ public class Annulus extends CanvasWatchFaceService {
                             nextChange = weatherData.daily.data.get(0).sunriseTime;
                         } else if (firstTime < weatherData.daily.data.get(0).sunsetTime) {
                             nextChange = weatherData.daily.data.get(0).sunsetTime;
-                        } else {
+                        } else if (firstTime < weatherData.daily.data.get(1).sunriseTime) {
                             nextChange = weatherData.daily.data.get(1).sunriseTime;
+                        } else {
+                            nextChange = weatherData.daily.data.get(1).sunsetTime;
                         }
 
-                        if (nextChange - currentTime < DateUtils.HOUR_IN_MILLIS * 12
-                                || nextChange - currentTime >= -DateUtils.HOUR_IN_MILLIS) {
-
+                        if (nextChange*1000 - currentTime < DateUtils.HOUR_IN_MILLIS * 11
+                                && nextChange*1000 - currentTime >= 0) {
                             DayWeatherPoint prev = null;
                             int index;
                             boolean found = false;
                             for (index = 0; index < dailyWeather.size(); ++index) {
                                 long t = dailyWeather.get(index).time;
                                 if (t > nextChange) {
-                                    index--;
                                     break;
                                 }
                                 prev = dailyWeather.get(index);
@@ -614,7 +614,11 @@ public class Annulus extends CanvasWatchFaceService {
                             float rot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
                             copy.rot = rot;
 
-                            dailyWeather.add(index+1, copy);
+                            if (index < dailyWeather.size()) {
+                                dailyWeather.add(index, copy);
+                            } else {
+                                dailyWeather.add(copy);
+                            }
                         }
                     }
 
