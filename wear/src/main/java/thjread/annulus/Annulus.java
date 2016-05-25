@@ -636,7 +636,7 @@ public class Annulus extends CanvasWatchFaceService {
                         }
 
                         float len = day_weather_len;
-                        if (p.rain >= 0.06) {
+                        if (p.rain >= 0.09) {
                             len += (day_weather_len_max - day_weather_len) * p.rain / assumed_max_rain;
                             if (!dark) {
                                 p.color = rain_color;
@@ -898,8 +898,8 @@ public class Annulus extends CanvasWatchFaceService {
         }
 
         private static final String WEATHER_CAPABILITY_NAME = "annulus_weather_data";
-        private static final String WEATHER_PATH = "/annulus_weather_data";
-        private static final String CALENDAR_PATH = "/annulus_calendar_data";
+        private static final String WEATHER_PATH = "/annulus/weather_data";
+        private static final String CALENDAR_PATH = "/annulus/calendar_data";
 
         @Override
         public void onConnected(Bundle connectionHint) {

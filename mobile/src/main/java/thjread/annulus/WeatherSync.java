@@ -44,8 +44,8 @@ class CalendarData implements java.io.Serializable {
 public class WeatherSync extends WearableListenerService implements GoogleApiClient.ConnectionCallbacks,
         GoogleApiClient.OnConnectionFailedListener, MessageApi.MessageListener {
 
-    private static final String WEATHER_PATH = "/annulus_weather_data";
-    private static final String CALENDAR_PATH = "/annulus_calendar_data";
+    private static final String WEATHER_PATH = "/annulus/weather_data";
+    private static final String CALENDAR_PATH = "/annulus/calendar_data";
     private static final String TAG = "thjread.annulus";
 
     private GoogleApiClient mGoogleApiClient;
