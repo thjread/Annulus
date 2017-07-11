@@ -337,7 +337,7 @@ public class Annulus extends CanvasWatchFaceService {
                     if (d.precipProbability != null && d.precipIntensity != null &&
                             time - currentTime <= 59 * DateUtils.MINUTE_IN_MILLIS &&
                             time - currentTime >= -DateUtils.MINUTE_IN_MILLIS) {
-                        double rain = d.precipIntensity * d.precipProbability;
+                        double rain = d.precipIntensity * d.precipProbability; // minutely data is conditional on probability
                         rainPrediction[minutes] = (float) rain;
                         double prob = d.precipProbability;
                         rainProb[minutes] = (float) prob;
@@ -537,6 +537,8 @@ public class Annulus extends CanvasWatchFaceService {
 
                         float dataRot = ((hours + (minutes / 60f)) / 6f) * (float) Math.PI;
 
+                        //Log.d("thjread.annulus", Float.toString(hours) + " " + Float.toString(minutes) + " " + Double.toString(d.precipIntensity));
+
 
                         DayWeatherPoint p = new DayWeatherPoint();
                         if (d.precipProbability != null && d.precipIntensity != null) {
@@ -547,7 +549,7 @@ public class Annulus extends CanvasWatchFaceService {
                                     prob = Math.max(prob, weatherData.currently.precipProbability);
                                 }
                             }
-                            double rain = prob * intensity;
+                            double rain = intensity; // hourly data is not conditional on probability
                             p.rain = (float) rain;
                         } else {
                             p.rain = 0;
